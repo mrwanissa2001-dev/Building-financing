@@ -7,6 +7,13 @@ import type {
   BuildingSettings,
 } from './types'
 
+export async function testConnection(): Promise<{ ok: boolean; message: string }> {
+  if (!supabase) return { ok: false, message: 'Supabase env vars not configured (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing)' }
+  const { error } = await supabase.from('building_settings').select('id').limit(1)
+  if (error) return { ok: false, message: error.message }
+  return { ok: true, message: 'Connected' }
+}
+
 export async function fetchAllData() {
   if (!supabase) return null
 

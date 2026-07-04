@@ -65,6 +65,7 @@ type StoreAction =
   | { type: 'UPDATE_EXPENSE'; payload: Expense }
   | { type: 'DELETE_EXPENSE'; payload: string }
   | { type: 'ADD_CATEGORY'; payload: ExpenseCategory }
+  | { type: 'UPDATE_CATEGORY'; payload: { tempId: string; row: ExpenseCategory } }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
 
 // ── Reducer ──
@@ -130,6 +131,14 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
 
     case 'ADD_CATEGORY':
       return { ...state, categories: [...state.categories, action.payload] }
+
+    case 'UPDATE_CATEGORY':
+      return {
+        ...state,
+        categories: state.categories.map((c) =>
+          c.id === action.payload.tempId ? action.payload.row : c
+        ),
+      }
 
     case 'UPDATE_SETTINGS':
       return {
@@ -408,7 +417,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const cat: ExpenseCategory = { id: crypto.randomUUID(), name }
     dispatch({ type: 'ADD_CATEGORY', payload: cat })
     sbInsertCategory(name).then((row) => {
-      if (row) dispatch({ type: 'ADD_CATEGORY', payload: row })
+      if (row) dispatch({ type: 'UPDATE_CATEGORY', payload: { tempId: cat.id, row } })
     })
     return cat
   }, [])
