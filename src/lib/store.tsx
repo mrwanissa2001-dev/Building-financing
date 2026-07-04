@@ -24,6 +24,21 @@ import type {
   PaymentMethod,
 } from './types'
 import { DEFAULT_EXPENSE_CATEGORIES } from './constants'
+import { isSupabaseConfigured } from './supabase'
+import {
+  fetchAllData,
+  insertApartment as sbInsertApartment,
+  updateApartmentRow as sbUpdateApartment,
+  deleteApartmentRow as sbDeleteApartment,
+  insertPayment as sbInsertPayment,
+  updatePaymentRow as sbUpdatePayment,
+  deletePaymentRow as sbDeletePayment,
+  insertExpense as sbInsertExpense,
+  updateExpenseRow as sbUpdateExpense,
+  deleteExpenseRow as sbDeleteExpense,
+  insertCategory as sbInsertCategory,
+  updateSettingsRow as sbUpdateSettings,
+} from './supabase-data'
 
 // ── Storage ──
 
@@ -623,20 +638,41 @@ const StoreContext = createContext<StoreContextValue | null>(null)
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(storeReducer, INITIAL_STATE)
 
-  // Load from localStorage on mount, seed if empty
+  // Load from Supabase (or localStorage fallback) on mount
   useEffect(() => {
-    const stored = loadFromStorage()
-    if (stored) {
-      dispatch({ type: 'LOAD', payload: stored })
-    } else {
-      const seeded = generateSeedData()
-      dispatch({ type: 'LOAD', payload: seeded })
+    async function load() {
+      if (isSupabaseConfigured()) {
+        const data = await fetchAllData()
+        if (data) {
+          dispatch({
+            type: 'LOAD',
+            payload: {
+              apartments: data.apartments,
+              payments: data.payments,
+              expenses: data.expenses,
+              categories: data.categories,
+              settings: data.settings,
+              initialized: true,
+              loaded: true,
+            },
+          })
+          return
+        }
+      }
+      const stored = loadFromStorage()
+      if (stored) {
+        dispatch({ type: 'LOAD', payload: stored })
+      } else {
+        const seeded = generateSeedData()
+        dispatch({ type: 'LOAD', payload: seeded })
+      }
     }
+    load()
   }, [])
 
-  // Persist to localStorage on every state change after initialization
+  // Persist to localStorage on every state change (only when not using Supabase)
   useEffect(() => {
-    if (state.initialized) {
+    if (state.initialized && !isSupabaseConfigured()) {
       saveToStorage(state)
     }
   }, [state])
@@ -777,53 +813,82 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // -- Context value --
 
+  const useSupabase = isSupabaseConfigured()
+
   const addApartment = useCallback(
     (data: Omit<Apartment, 'id' | 'created_at'>): Apartment => {
       const apt: Apartment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_APARTMENT', payload: apt })
+      if (useSupabase) {
+        sbInsertApartment(data).then((row) => {
+          if (row) dispatch({ type: 'UPDATE_APARTMENT', payload: row })
+        })
+      }
       return apt
-    }, []
+    }, [useSupabase]
   )
   const updateApartment = useCallback((apartment: Apartment) => {
     dispatch({ type: 'UPDATE_APARTMENT', payload: apartment })
-  }, [])
+    if (useSupabase) sbUpdateApartment(apartment)
+  }, [useSupabase])
   const deleteApartment = useCallback((id: string) => {
     dispatch({ type: 'DELETE_APARTMENT', payload: id })
-  }, [])
+    if (useSupabase) sbDeleteApartment(id)
+  }, [useSupabase])
   const addPayment = useCallback(
     (data: Omit<Payment, 'id' | 'created_at'>): Payment => {
       const p: Payment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_PAYMENT', payload: p })
+      if (useSupabase) {
+        sbInsertPayment(data).then((row) => {
+          if (row) dispatch({ type: 'UPDATE_PAYMENT', payload: row })
+        })
+      }
       return p
-    }, []
+    }, [useSupabase]
   )
   const updatePayment = useCallback((payment: Payment) => {
     dispatch({ type: 'UPDATE_PAYMENT', payload: payment })
-  }, [])
+    if (useSupabase) sbUpdatePayment(payment)
+  }, [useSupabase])
   const deletePayment = useCallback((id: string) => {
     dispatch({ type: 'DELETE_PAYMENT', payload: id })
-  }, [])
+    if (useSupabase) sbDeletePayment(id)
+  }, [useSupabase])
   const addExpense = useCallback(
     (data: Omit<Expense, 'id' | 'created_at'>): Expense => {
       const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_EXPENSE', payload: e })
+      if (useSupabase) {
+        sbInsertExpense(data).then((row) => {
+          if (row) dispatch({ type: 'UPDATE_EXPENSE', payload: row })
+        })
+      }
       return e
-    }, []
+    }, [useSupabase]
   )
   const updateExpense = useCallback((expense: Expense) => {
     dispatch({ type: 'UPDATE_EXPENSE', payload: expense })
-  }, [])
+    if (useSupabase) sbUpdateExpense(expense)
+  }, [useSupabase])
   const deleteExpense = useCallback((id: string) => {
     dispatch({ type: 'DELETE_EXPENSE', payload: id })
-  }, [])
+    if (useSupabase) sbDeleteExpense(id)
+  }, [useSupabase])
   const addCategory = useCallback((name: string): ExpenseCategory => {
     const cat: ExpenseCategory = { id: crypto.randomUUID(), name }
     dispatch({ type: 'ADD_CATEGORY', payload: cat })
+    if (useSupabase) {
+      sbInsertCategory(name).then((row) => {
+        if (row) dispatch({ type: 'ADD_CATEGORY', payload: row })
+      })
+    }
     return cat
-  }, [])
+  }, [useSupabase])
   const updateSettings = useCallback((data: Partial<BuildingSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: data })
-  }, [])
+    if (useSupabase) sbUpdateSettings(data)
+  }, [useSupabase])
 
   const value: StoreContextValue = {
     state,
