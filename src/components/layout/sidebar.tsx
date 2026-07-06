@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { useStore } from "@/lib/store"
 import {
   LayoutDashboard,
   Building2,
@@ -30,6 +31,8 @@ interface SidebarProps {
 export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { state } = useStore()
+  const buildingName = state.settings.building_name
 
   return (
     <>
@@ -55,10 +58,10 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
         )}
       >
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-6">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-primary" />
-            <span className="text-lg font-semibold text-sidebar-foreground">
-              BuildFin
+          <div className="flex items-center gap-2 min-w-0">
+            <Building2 className="h-6 w-6 shrink-0 text-primary" />
+            <span className="truncate text-lg font-semibold text-sidebar-foreground" title={buildingName || "BuildFin"}>
+              {buildingName || "BuildFin"}
             </span>
           </div>
           <button

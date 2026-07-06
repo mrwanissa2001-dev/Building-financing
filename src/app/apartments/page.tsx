@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
 import { useComputed } from "@/hooks/use-computed"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
-import { OCCUPANCY_STATUSES, PAYMENT_METHODS, FLOORS, PAYER_RELATIONS } from "@/lib/constants"
+import { OCCUPANCY_STATUSES, PAYMENT_METHODS, buildingFloors, PAYER_RELATIONS } from "@/lib/constants"
 import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
 import {
   monthKey,
@@ -70,6 +70,7 @@ import {
   Download,
   Upload,
   Users,
+  RotateCcw,
 } from "lucide-react"
 
 type SortField = "unit_number" | "amount_owed"
@@ -114,6 +115,7 @@ const monthCellTitle = (s: MonthCellStatus) =>
 
 const emptyApartmentForm = {
   unit_number: "",
+  building_no: "1",
   floor: "1",
   primary_resident_name: "",
   secondary_resident_name: "",
@@ -154,10 +156,21 @@ function ApartmentsContent() {
   const searchParams = useSearchParams()
 
   const [search, setSearch] = useState("")
-  const [filterStatus, setFilterStatus] = useState<PaymentStatus | "all">("all")
-  const [filterOccupancy, setFilterOccupancy] = useState<OccupancyStatus | "all">("all")
-  const [filterMethod, setFilterMethod] = useState<PaymentMethod | "all">("all")
-  const [filterFloor, setFilterFloor] = useState<string>("all")
+  // filters start from the URL so dashboard cards can link here preset
+  const [filterStatus, setFilterStatus] = useState<PaymentStatus | "all">(() => {
+    const v = searchParams.get("status")
+    return v === "paid" || v === "due_soon" || v === "overdue" ? v : "all"
+  })
+  const [filterOccupancy, setFilterOccupancy] = useState<OccupancyStatus | "all">(() => {
+    const v = searchParams.get("occupancy")
+    return v === "active" || v === "mia" || v === "traveling_but_paying" ? v : "all"
+  })
+  const [filterMethod, setFilterMethod] = useState<PaymentMethod | "all">(() => {
+    const v = searchParams.get("method")
+    return v === "cash" || v === "bank" ? v : "all"
+  })
+  const [filterFloor, setFilterFloor] = useState<string>(() => searchParams.get("floor") ?? "all")
+  const [filterBuilding, setFilterBuilding] = useState<string>("all")
 
   const [sortField, setSortField] = useState<SortField>("unit_number")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -184,6 +197,31 @@ function ApartmentsContent() {
     const id = searchParams.get("id")
     if (id) setSelectedId(id)
   }, [searchParams])
+
+  // floors come from the building setup so the app can't hold
+  // apartments on floors that don't exist
+  const floors = useMemo(
+    () => buildingFloors(state.settings.mezzanine_floors, state.settings.num_floors),
+    [state.settings.mezzanine_floors, state.settings.num_floors]
+  )
+  const numBuildings = Math.max(1, state.settings.num_buildings || 1)
+
+  const filtersActive =
+    search !== "" ||
+    filterStatus !== "all" ||
+    filterOccupancy !== "all" ||
+    filterMethod !== "all" ||
+    filterFloor !== "all" ||
+    filterBuilding !== "all"
+
+  function resetFilters() {
+    setSearch("")
+    setFilterStatus("all")
+    setFilterOccupancy("all")
+    setFilterMethod("all")
+    setFilterFloor("all")
+    setFilterBuilding("all")
+  }
 
   const filtered = useMemo(() => {
     let list = apartmentsWithStatus
@@ -212,6 +250,9 @@ function ApartmentsContent() {
     if (filterFloor !== "all") {
       list = list.filter((a) => a.floor === filterFloor)
     }
+    if (filterBuilding !== "all") {
+      list = list.filter((a) => String(a.building_no ?? 1) === filterBuilding)
+    }
     if (filterMethod !== "all") {
       const aptIdsWithMethod = new Set(
         state.payments.filter((p) => p.method === filterMethod).map((p) => p.apartment_id)
@@ -227,7 +268,7 @@ function ApartmentsContent() {
     })
 
     return list
-  }, [apartmentsWithStatus, search, filterStatus, filterOccupancy, filterFloor, filterMethod, sortField, sortDir, state.payments])
+  }, [apartmentsWithStatus, search, filterStatus, filterOccupancy, filterFloor, filterBuilding, filterMethod, sortField, sortDir, state.payments])
 
   // apartments in ascending unit order for the collection grid
   const gridApartments = useMemo(
@@ -283,8 +324,43 @@ function ApartmentsContent() {
   function handleAddApartment() {
     const due = parseAmount(aptForm.monthly_due_amount)
     if (!aptForm.unit_number || !aptForm.primary_resident_name || isNaN(due)) return
+
+    // hard limits from the building setup — no mishaps
+    const buildingNo = Math.max(1, parseInt(aptForm.building_no, 10) || 1)
+    if (!floors.includes(aptForm.floor)) {
+      toast({
+        title: "Floor not available",
+        description: `Floor ${aptForm.floor} is outside the building structure configured in Building Setup.`,
+        variant: "destructive",
+      })
+      return
+    }
+    const perFloor = state.settings.apartments_per_floor
+    if (perFloor > 0) {
+      const onFloor = state.apartments.filter(
+        (a) => a.floor === aptForm.floor && (a.building_no ?? 1) === buildingNo
+      ).length
+      if (onFloor >= perFloor) {
+        toast({
+          title: "Floor is full",
+          description: `Floor ${aptForm.floor} already has ${onFloor} of ${perFloor} apartments allowed per floor (see Building Setup).`,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+    if (state.settings.total_apartments > 0 && state.apartments.length >= state.settings.total_apartments) {
+      toast({
+        title: "Building is full",
+        description: `All ${state.settings.total_apartments} apartments are already registered (see Building Setup).`,
+        variant: "destructive",
+      })
+      return
+    }
+
     addApartment({
       unit_number: aptForm.unit_number,
+      building_no: buildingNo,
       floor: aptForm.floor,
       primary_resident_name: aptForm.primary_resident_name,
       secondary_resident_name: aptForm.secondary_resident_name,
@@ -500,6 +576,7 @@ function ApartmentsContent() {
             <ArrowLeft className="mr-1 h-4 w-4" /> Back
           </Button>
           <h1 className="text-2xl font-bold">Unit {apt.unit_number}</h1>
+          {numBuildings > 1 && <Badge variant="outline">Building {apt.building_no ?? 1}</Badge>}
           <Badge variant="outline">Floor {apt.floor}</Badge>
           <Badge variant={occupancyBadgeVariant(apt.occupancy_status)}>
             {OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}
@@ -797,11 +874,22 @@ function ApartmentsContent() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {numBuildings > 1 && (
+                <Select value={filterBuilding} onValueChange={setFilterBuilding}>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Building" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Buildings</SelectItem>
+                    {Array.from({ length: numBuildings }, (_, i) => String(i + 1)).map((b) => (
+                      <SelectItem key={b} value={b}>Building {b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={filterFloor} onValueChange={setFilterFloor}>
                 <SelectTrigger className="w-[130px]"><SelectValue placeholder="Floor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Floors</SelectItem>
-                  {FLOORS.map((f) => (
+                  {floors.map((f) => (
                     <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
                   ))}
                 </SelectContent>
@@ -829,6 +917,11 @@ function ApartmentsContent() {
                   {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {filtersActive && (
+                <Button variant="ghost" onClick={resetFilters}>
+                  <RotateCcw className="mr-1 h-4 w-4" /> Reset Filters
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -1047,13 +1140,26 @@ function ApartmentsContent() {
                 <Select value={aptForm.floor} onValueChange={(v) => setAptForm({ ...aptForm, floor: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {FLOORS.map((f) => (
+                    {floors.map((f) => (
                       <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            {numBuildings > 1 && (
+              <div>
+                <Label>Building</Label>
+                <Select value={aptForm.building_no} onValueChange={(v) => setAptForm({ ...aptForm, building_no: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: numBuildings }, (_, i) => String(i + 1)).map((b) => (
+                      <SelectItem key={b} value={b}>Building {b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Primary Resident Name *</Label>
               <Input value={aptForm.primary_resident_name} onChange={(e) => setAptForm({ ...aptForm, primary_resident_name: e.target.value })} />
@@ -1079,7 +1185,7 @@ function ApartmentsContent() {
               </div>
               <div>
                 <Label>Monthly Due *</Label>
-                <Input type="number" value={aptForm.monthly_due_amount} onChange={(e) => setAptForm({ ...aptForm, monthly_due_amount: e.target.value })} placeholder="0" />
+                <Input type="text" inputMode="decimal" value={aptForm.monthly_due_amount} onChange={(e) => setAptForm({ ...aptForm, monthly_due_amount: e.target.value })} placeholder="0" />
               </div>
             </div>
             <div>
@@ -1240,7 +1346,15 @@ function ApartmentsContent() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Amount *</Label>
-                <Input type="number" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} />
+                {/* free-typing text input (numeric keypad on mobile) — the
+                    number spinner made data entry painful */}
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={payForm.amount}
+                  onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                />
               </div>
               <div>
                 <Label>Method</Label>
