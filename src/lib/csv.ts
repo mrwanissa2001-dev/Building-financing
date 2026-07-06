@@ -60,6 +60,21 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''))
 }
 
+// Cells that are only '#' characters are Excel's "column too narrow"
+// artifact — treat them as empty
+export function cleanCell(value: string): string {
+  const t = value.trim()
+  return /^#+$/.test(t) ? '' : t
+}
+
+// Tolerant amount parser: strips currency text, spaces, and thousands
+// separators so "1,500", "1 500 LE", "LE 1500" all become 1500
+export function parseAmount(value: string): number {
+  const cleaned = cleanCell(value).replace(/[^0-9.\-]/g, '')
+  if (!cleaned) return NaN
+  return parseFloat(cleaned)
+}
+
 // Map data rows to objects using the header row (case-insensitive header match)
 export function csvToObjects(text: string): Record<string, string>[] {
   const rows = parseCsv(text)
@@ -68,7 +83,7 @@ export function csvToObjects(text: string): Record<string, string>[] {
   return rows.slice(1).map((r) => {
     const obj: Record<string, string> = {}
     headers.forEach((h, i) => {
-      obj[h] = (r[i] ?? '').trim()
+      obj[h] = cleanCell(r[i] ?? '')
     })
     return obj
   })

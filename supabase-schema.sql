@@ -52,6 +52,7 @@ create table payments (
   date_paid date not null,
   period_start date not null,
   period_end date not null,
+  recurring boolean not null default false,
   notes text not null default '',
   created_at timestamptz not null default now()
 );
@@ -64,6 +65,7 @@ create table expenses (
   method text not null check (method in ('cash', 'bank')),
   date date not null,
   vendor text not null,
+  recurring boolean not null default false,
   notes text not null default '',
   created_at timestamptz not null default now()
 );

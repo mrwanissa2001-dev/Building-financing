@@ -29,6 +29,14 @@ import {
   insertCategory as sbInsertCategory,
   updateSettingsRow as sbUpdateSettings,
 } from './supabase-data'
+import {
+  monthKey,
+  currentMonthKey,
+  addMonthsToKey,
+  monthsBetween,
+  firstDayOfMonth,
+  lastDayOfMonth,
+} from './months'
 
 // ── State ──
 
@@ -206,6 +214,82 @@ const StoreContext = createContext<StoreContextValue | null>(null)
 
 // ── Provider ──
 
+// Build the catch-up entries a recurring payment/expense series is
+// missing, up to (and including) the current month. Each generated row
+// extends the chain, so the next app load continues from it.
+function buildRecurringPayments(payments: Payment[]): Omit<Payment, 'id' | 'created_at'>[] {
+  const nowKey = currentMonthKey()
+  const out: Omit<Payment, 'id' | 'created_at'>[] = []
+
+  const latestByApartment = new Map<string, Payment>()
+  for (const p of payments) {
+    if (!p.recurring) continue
+    const prev = latestByApartment.get(p.apartment_id)
+    if (!prev || p.period_start > prev.period_start) latestByApartment.set(p.apartment_id, p)
+  }
+
+  for (const latest of latestByApartment.values()) {
+    const startK = monthKey(latest.period_start)
+    const endK = monthKey(latest.period_end)
+    const span = Math.max(1, monthsBetween(startK, endK) + 1)
+    let from = addMonthsToKey(startK, span)
+    let guard = 0
+    while (from <= nowKey && guard < 24) {
+      const to = addMonthsToKey(from, span - 1)
+      out.push({
+        apartment_id: latest.apartment_id,
+        payer_name: latest.payer_name,
+        payer_relation: latest.payer_relation ?? '',
+        amount: latest.amount,
+        method: latest.method,
+        date_paid: firstDayOfMonth(from),
+        period_start: firstDayOfMonth(from),
+        period_end: lastDayOfMonth(to),
+        recurring: true,
+        notes: '(auto recurring)',
+      })
+      from = addMonthsToKey(from, span)
+      guard++
+    }
+  }
+  return out
+}
+
+function buildRecurringExpenses(expenses: Expense[]): Omit<Expense, 'id' | 'created_at'>[] {
+  const nowKey = currentMonthKey()
+  const out: Omit<Expense, 'id' | 'created_at'>[] = []
+
+  const latestBySeries = new Map<string, Expense>()
+  for (const e of expenses) {
+    if (!e.recurring) continue
+    const k = `${e.category_id}|${e.vendor.trim().toLowerCase()}`
+    const prev = latestBySeries.get(k)
+    if (!prev || e.date > prev.date) latestBySeries.set(k, e)
+  }
+
+  for (const latest of latestBySeries.values()) {
+    const dayOfMonth = Number(latest.date.slice(8, 10)) || 1
+    let mk = addMonthsToKey(monthKey(latest.date), 1)
+    let guard = 0
+    while (mk <= nowKey && guard < 24) {
+      const [y, m] = mk.split('-').map(Number)
+      const lastDay = new Date(y, m, 0).getDate()
+      out.push({
+        category_id: latest.category_id,
+        amount: latest.amount,
+        method: latest.method,
+        date: `${mk}-${String(Math.min(dayOfMonth, lastDay)).padStart(2, '0')}`,
+        vendor: latest.vendor,
+        recurring: true,
+        notes: '(auto recurring)',
+      })
+      mk = addMonthsToKey(mk, 1)
+      guard++
+    }
+  }
+  return out
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(storeReducer, INITIAL_STATE)
 
@@ -225,6 +309,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             loaded: true,
           },
         })
+
+        // catch up recurring series to the current month
+        for (const rp of buildRecurringPayments(data.payments)) {
+          const p: Payment = { ...rp, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+          dispatch({ type: 'ADD_PAYMENT', payload: p })
+          sbInsertPayment({ ...rp, id: p.id })
+        }
+        for (const re of buildRecurringExpenses(data.expenses)) {
+          const e: Expense = { ...re, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+          dispatch({ type: 'ADD_EXPENSE', payload: e })
+          sbInsertExpense({ ...re, id: e.id })
+        }
       } else {
         dispatch({
           type: 'LOAD',
@@ -480,6 +576,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           method: r.method,
           date: r.date,
           vendor: r.vendor,
+          recurring: false,
           notes: r.notes,
         }
         const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }

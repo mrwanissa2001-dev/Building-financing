@@ -1,4 +1,4 @@
-import type { PaymentInterval, OccupancyStatus, PaymentMethod, PayerRelation } from './types'
+import type { OccupancyStatus, PaymentMethod, PayerRelation } from './types'
 
 // Building floors: mezzanine M1 and M2, then 1..13
 export const FLOORS: string[] = [
@@ -18,16 +18,10 @@ export const PAYER_RELATIONS: { value: PayerRelation; label: string }[] = [
   { value: 'mother', label: 'Mother' },
   { value: 'sister', label: 'Sister' },
   { value: 'brother', label: 'Brother' },
+  { value: 'son', label: 'Son' },
+  { value: 'daughter', label: 'Daughter' },
   { value: 'friend', label: 'Friend' },
   { value: 'other', label: 'Other' },
-]
-
-export const PAYMENT_INTERVALS: { value: PaymentInterval; label: string; months: number }[] = [
-  { value: 'monthly', label: 'Monthly', months: 1 },
-  { value: 'bimonthly', label: 'Bimonthly', months: 2 },
-  { value: 'quarterly', label: 'Quarterly', months: 3 },
-  { value: 'biannual', label: 'Biannual', months: 6 },
-  { value: 'annual', label: 'Annual', months: 12 },
 ]
 
 export const OCCUPANCY_STATUSES: { value: OccupancyStatus; label: string }[] = [

@@ -4,7 +4,8 @@ import { useState, useMemo, useRef } from "react"
 import { useStore } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_METHODS } from "@/lib/constants"
-import { buildCsv, csvToObjects, downloadCsv, normalizeDate } from "@/lib/csv"
+import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import type { Expense, PaymentMethod } from "@/lib/types"
 
@@ -47,6 +48,7 @@ interface ExpenseFormData {
   method: PaymentMethod
   date: string
   vendor: string
+  recurring: boolean
   notes: string
 }
 
@@ -56,6 +58,7 @@ const emptyForm: ExpenseFormData = {
   method: "cash",
   date: new Date().toISOString().split("T")[0],
   vendor: "",
+  recurring: false,
   notes: "",
 }
 
@@ -151,6 +154,7 @@ export default function ExpensesPage() {
       method: expense.method,
       date: expense.date,
       vendor: expense.vendor,
+      recurring: expense.recurring ?? false,
       notes: expense.notes,
     })
     setDialogOpen(true)
@@ -159,7 +163,7 @@ export default function ExpensesPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    const parsedAmount = parseFloat(form.amount)
+    const parsedAmount = parseAmount(form.amount)
     if (!form.category_id || isNaN(parsedAmount) || parsedAmount <= 0 || !form.date || !form.vendor) {
       return
     }
@@ -172,6 +176,7 @@ export default function ExpensesPage() {
         method: form.method,
         date: form.date,
         vendor: form.vendor,
+        recurring: form.recurring,
         notes: form.notes,
       })
     } else {
@@ -181,6 +186,7 @@ export default function ExpensesPage() {
         method: form.method,
         date: form.date,
         vendor: form.vendor,
+        recurring: form.recurring,
         notes: form.notes,
       })
     }
@@ -200,15 +206,15 @@ export default function ExpensesPage() {
   // ── CSV export / import ──
 
   function exportExpensesCsv() {
-    const headers = ["category", "amount", "method", "date", "vendor", "notes", "entered_at"]
+    const headers = ["category", "amount", "method", "date", "vendor", "recurring", "notes"]
     const rows = state.expenses.map((e) => [
       getCategoryName(e.category_id),
       e.amount,
       e.method,
       e.date,
       e.vendor,
+      e.recurring ? "yes" : "",
       e.notes,
-      e.created_at,
     ])
     downloadCsv(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
   }
@@ -229,7 +235,7 @@ export default function ExpensesPage() {
         notes: string
       }[] = []
       for (const o of objs) {
-        const amount = parseFloat(o.amount)
+        const amount = parseAmount(o.amount || "")
         const date = normalizeDate(o.date || "")
         if (!o.category || isNaN(amount) || !date) { skipped++; continue }
         rows.push({
@@ -549,6 +555,21 @@ export default function ExpensesPage() {
                     setForm((f) => ({ ...f, vendor: e.target.value }))
                   }
                   required
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-3 sm:col-span-2">
+                <div>
+                  <Label>Repeat monthly</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically add this expense again each month
+                  </p>
+                </div>
+                <Switch
+                  checked={form.recurring}
+                  onCheckedChange={(v) =>
+                    setForm((f) => ({ ...f, recurring: v }))
+                  }
                 />
               </div>
 

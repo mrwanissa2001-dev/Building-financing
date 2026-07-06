@@ -8,7 +8,7 @@ export type PaymentMethod = 'cash' | 'bank'
 
 export type PaymentStatus = 'paid' | 'due_soon' | 'overdue'
 
-export type PayerRelation = '' | 'father' | 'mother' | 'sister' | 'brother' | 'friend' | 'other'
+export type PayerRelation = '' | 'father' | 'mother' | 'sister' | 'brother' | 'son' | 'daughter' | 'friend' | 'other'
 
 // floor is 'M1' | 'M2' (mezzanine) or '1'..'13'
 export interface Apartment {
@@ -27,6 +27,9 @@ export interface Apartment {
   created_at: string
 }
 
+// period_start/period_end carry the covered months: period_start is the
+// first day of the first covered month, period_end the last day of the
+// last covered month
 export interface Payment {
   id: string
   apartment_id: string
@@ -37,6 +40,7 @@ export interface Payment {
   date_paid: string
   period_start: string
   period_end: string
+  recurring: boolean
   notes: string
   created_at: string
 }
@@ -48,6 +52,7 @@ export interface Expense {
   method: PaymentMethod
   date: string
   vendor: string
+  recurring: boolean
   notes: string
   created_at: string
 }
@@ -66,12 +71,15 @@ export interface BuildingSettings {
 
 // ── Computed types ──
 
+// last_paid_month / next_unpaid_month are 'YYYY-MM' month keys derived
+// from money actually received (not from what payments claim to cover)
 export interface ApartmentWithStatus extends Apartment {
-  next_due_date: string | null
-  last_payment_date: string | null
+  last_paid_month: string | null
+  next_unpaid_month: string | null
   payment_status: PaymentStatus
   days_overdue: number
   amount_owed: number
+  total_paid: number
 }
 
 export interface DashboardStats {
