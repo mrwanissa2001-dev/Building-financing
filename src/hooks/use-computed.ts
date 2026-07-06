@@ -12,35 +12,21 @@ import {
 } from 'date-fns'
 import { useStore } from '@/lib/store'
 import {
-  computeNextDueDate,
-  computePaymentStatus,
-  computeDaysOverdue,
-  computeAmountOwed,
+  computeCoverage,
+  computeMonthCell,
   computeCashOnHand,
   computeBankBalance,
   computeCollectedThisMonth,
   computeSpentThisMonth,
   computeOccupancyBreakdown,
+  type ApartmentCoverage,
+  type MonthCellStatus,
 } from '@/lib/computations'
 import type {
   ApartmentWithStatus,
   DashboardStats,
   OccupancyBreakdown,
-  Payment,
 } from '@/lib/types'
-
-function getLastPayment(
-  apartmentId: string,
-  payments: Payment[]
-): Payment | null {
-  const aptPayments = payments
-    .filter((p) => p.apartment_id === apartmentId)
-    .sort(
-      (a, b) =>
-        new Date(b.period_end).getTime() - new Date(a.period_end).getTime()
-    )
-  return aptPayments[0] || null
-}
 
 function isWithinMonth(dateStr: string, monthStart: Date, monthEnd: Date): boolean {
   const d = parseISO(dateStr)
@@ -54,23 +40,48 @@ export function useComputed() {
   const { state } = useStore()
   const { apartments, payments, expenses, categories, settings } = state
 
+  // money-based month coverage per apartment
+  const coverageByApartment = useMemo((): Map<string, ApartmentCoverage> => {
+    const map = new Map<string, ApartmentCoverage>()
+    for (const apt of apartments) {
+      const aptPayments = payments.filter((p) => p.apartment_id === apt.id)
+      map.set(apt.id, computeCoverage(apt, aptPayments))
+    }
+    return map
+  }, [apartments, payments])
+
   const getAllApartmentsWithStatus = useMemo((): ApartmentWithStatus[] => {
     return apartments.map((apt) => {
-      const lastPayment = getLastPayment(apt.id, payments)
-      const nextDueDate = computeNextDueDate(apt, lastPayment)
-      const paymentStatus = computePaymentStatus(nextDueDate)
-      const daysOverdue = computeDaysOverdue(nextDueDate)
-      const amountOwed = computeAmountOwed(apt, lastPayment)
-
+      const cov = coverageByApartment.get(apt.id)!
       return {
         ...apt,
-        next_due_date: nextDueDate,
-        payment_status: paymentStatus,
-        days_overdue: daysOverdue,
-        amount_owed: amountOwed,
+        last_paid_month: cov.lastPaidMonth,
+        next_unpaid_month: cov.nextUnpaidMonth,
+        payment_status: cov.status,
+        days_overdue: cov.daysOverdue,
+        amount_owed: cov.amountOwed,
+        total_paid: cov.totalPaid,
       }
     })
-  }, [apartments, payments])
+  }, [apartments, coverageByApartment])
+
+  // 12 cell states (Jan..Dec) for one apartment in one year — drives the
+  // visual month grid
+  const getMonthCells = useMemo(() => {
+    return (apartmentId: string, year: number): MonthCellStatus[] => {
+      const cov = coverageByApartment.get(apartmentId)
+      if (!cov) return Array(12).fill('na')
+      return Array.from({ length: 12 }, (_, i) => {
+        const key = `${year}-${String(i + 1).padStart(2, '0')}`
+        return computeMonthCell(cov, key)
+      })
+    }
+  }, [coverageByApartment])
+
+  const getCoverage = useMemo(() => {
+    return (apartmentId: string): ApartmentCoverage | undefined =>
+      coverageByApartment.get(apartmentId)
+  }, [coverageByApartment])
 
   const getApartmentWithStatus = useMemo(() => {
     return (id: string): ApartmentWithStatus | undefined =>
@@ -252,6 +263,8 @@ export function useComputed() {
     getApartmentWithStatus,
     getAllApartmentsWithStatus,
     apartmentsWithStatus: getAllApartmentsWithStatus,
+    getMonthCells,
+    getCoverage,
     getDashboardStats,
     dashboardStats: getDashboardStats,
     getOccupancyBreakdown,

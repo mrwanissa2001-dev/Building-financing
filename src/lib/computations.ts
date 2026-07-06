@@ -1,14 +1,11 @@
+import { startOfMonth, endOfMonth, isAfter, isBefore } from 'date-fns'
 import {
-  differenceInDays,
-  differenceInMonths,
-  addMonths,
-  startOfMonth,
-  endOfMonth,
-  isAfter,
-  isBefore,
-  addDays,
-} from 'date-fns'
-import { PAYMENT_INTERVALS } from './constants'
+  monthKey,
+  monthKeyOrNull,
+  addMonthsToKey,
+  monthsBetween,
+  firstDayOfMonth,
+} from './months'
 import type {
   Apartment,
   Payment,
@@ -17,60 +14,117 @@ import type {
   OccupancyBreakdown,
 } from './types'
 
-export function computeNextDueDate(
+// ── Month coverage engine ──
+//
+// Everything is derived from money actually received, never from what a
+// payment claims to cover. Coverage starts at the earliest month any
+// payment refers to (fallback: the month the apartment was added) and
+// advances one month for every full monthly_due_amount received. A
+// payment of 500 against a due of 1000 covers nothing until the other
+// 500 arrives — partial payments can never mark a month as paid.
+
+export interface ApartmentCoverage {
+  // first tracked month, null when no monthly due is configured
+  startKey: string | null
+  totalPaid: number
+  // whole months covered by the money received
+  fullMonthsPaid: number
+  // last fully covered month (can be in the future when paid in advance)
+  lastPaidMonth: string | null
+  // the month the next payment refers to
+  nextUnpaidMonth: string | null
+  amountOwed: number
+  status: PaymentStatus
+  daysOverdue: number
+}
+
+export function computeCoverage(
   apartment: Apartment,
-  lastPayment: Payment | null
-): string | null {
-  if (!lastPayment) return null
+  payments: Payment[],
+  now: Date = new Date()
+): ApartmentCoverage {
+  const due = apartment.monthly_due_amount
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
 
-  const intervalConfig = PAYMENT_INTERVALS.find(
-    (i) => i.value === apartment.payment_interval
-  )
-  if (!intervalConfig) return null
+  if (!due || due <= 0) {
+    // no monthly due configured — nothing is owed, nothing is tracked
+    return {
+      startKey: null,
+      totalPaid,
+      fullMonthsPaid: 0,
+      lastPaidMonth: null,
+      nextUnpaidMonth: null,
+      amountOwed: 0,
+      status: 'paid',
+      daysOverdue: 0,
+    }
+  }
 
-  const periodEnd = new Date(lastPayment.period_end)
-  const nextDue = addMonths(periodEnd, intervalConfig.months)
-  return nextDue.toISOString()
+  // earliest month any payment refers to; fallback to the month the
+  // apartment was registered
+  let startKey: string | null = null
+  for (const p of payments) {
+    const k = monthKeyOrNull(p.period_start)
+    if (k !== null && (startKey === null || k < startKey)) startKey = k
+  }
+  if (startKey === null) {
+    startKey = monthKeyOrNull(apartment.created_at) ?? monthKey(now)
+  }
+
+  const currentKey = monthKey(now)
+  const fullMonthsPaid = Math.floor(totalPaid / due)
+  // months owed so far: start month through the current month
+  const monthsDueSoFar = Math.max(0, monthsBetween(startKey, currentKey) + 1)
+  const amountOwed = Math.max(0, monthsDueSoFar * due - totalPaid)
+
+  const lastPaidMonth =
+    fullMonthsPaid > 0 ? addMonthsToKey(startKey, fullMonthsPaid - 1) : null
+  const nextUnpaidMonth = addMonthsToKey(startKey, fullMonthsPaid)
+
+  let status: PaymentStatus
+  if (amountOwed <= 0) {
+    status = 'paid'
+  } else if (fullMonthsPaid >= monthsDueSoFar - 1) {
+    // only the current month is outstanding (fully or partially)
+    status = 'due_soon'
+  } else {
+    status = 'overdue'
+  }
+
+  let daysOverdue = 0
+  if (status === 'overdue') {
+    const firstUnpaid = new Date(firstDayOfMonth(nextUnpaidMonth))
+    daysOverdue = Math.max(
+      0,
+      Math.floor((now.getTime() - firstUnpaid.getTime()) / 86_400_000)
+    )
+  }
+
+  return {
+    startKey,
+    totalPaid,
+    fullMonthsPaid,
+    lastPaidMonth,
+    nextUnpaidMonth,
+    amountOwed,
+    status,
+    daysOverdue,
+  }
 }
 
-export function computePaymentStatus(nextDueDate: string | null): PaymentStatus {
-  if (!nextDueDate) return 'overdue'
+// Cell state for the visual month grid
+export type MonthCellStatus = 'paid' | 'due' | 'future' | 'na'
 
-  const now = new Date()
-  const dueDate = new Date(nextDueDate)
-
-  if (isBefore(dueDate, now)) return 'overdue'
-
-  const sevenDaysFromNow = addDays(now, 7)
-  if (isBefore(dueDate, sevenDaysFromNow)) return 'due_soon'
-
-  return 'paid'
-}
-
-export function computeDaysOverdue(nextDueDate: string | null): number {
-  if (!nextDueDate) return 0
-
-  const now = new Date()
-  const dueDate = new Date(nextDueDate)
-
-  if (isAfter(dueDate, now)) return 0
-
-  return differenceInDays(now, dueDate)
-}
-
-export function computeAmountOwed(
-  apartment: Apartment,
-  lastPayment: Payment | null
-): number {
-  if (!lastPayment) return apartment.monthly_due_amount
-
-  const now = new Date()
-  const periodEnd = new Date(lastPayment.period_end)
-
-  if (isAfter(periodEnd, now)) return 0
-
-  const monthsElapsed = differenceInMonths(now, periodEnd)
-  return Math.max(apartment.monthly_due_amount * monthsElapsed, 0)
+export function computeMonthCell(
+  coverage: ApartmentCoverage,
+  key: string,
+  now: Date = new Date()
+): MonthCellStatus {
+  if (!coverage.startKey) return 'na'
+  if (key < coverage.startKey) return 'na'
+  if (coverage.lastPaidMonth && key <= coverage.lastPaidMonth) return 'paid'
+  if (key <= monthKey(now)) return 'due'
+  return 'future'
 }
 
 export function computeCashOnHand(

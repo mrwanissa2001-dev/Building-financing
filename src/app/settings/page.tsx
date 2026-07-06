@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useStore } from "@/lib/store"
 import { useToast } from "@/components/ui/use-toast"
+import { testConnection } from "@/lib/supabase-data"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +24,16 @@ export default function SettingsPage() {
   const [totalApartments, setTotalApartments] = useState("")
   const [expectedIncome, setExpectedIncome] = useState("")
   const [expectedExpenditure, setExpectedExpenditure] = useState("")
+
+  const [connStatus, setConnStatus] = useState<'checking' | 'connected' | 'error'>('checking')
+  const [connMessage, setConnMessage] = useState('')
+
+  useEffect(() => {
+    testConnection().then(({ ok, message }) => {
+      setConnStatus(ok ? 'connected' : 'error')
+      setConnMessage(message)
+    })
+  }, [])
 
   useEffect(() => {
     if (state.loaded) {
@@ -74,6 +85,36 @@ export default function SettingsPage() {
           Configure your building&apos;s baseline settings
         </p>
       </div>
+
+      {/* Supabase connection status */}
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <span
+              className={
+                connStatus === 'connected'
+                  ? 'h-2.5 w-2.5 rounded-full bg-green-500 inline-block'
+                  : connStatus === 'error'
+                  ? 'h-2.5 w-2.5 rounded-full bg-red-500 inline-block'
+                  : 'h-2.5 w-2.5 rounded-full bg-yellow-400 inline-block'
+              }
+            />
+            Supabase Connection
+          </CardTitle>
+          <CardDescription>
+            {connStatus === 'checking' && 'Checking connection…'}
+            {connStatus === 'connected' && 'Connected — data is being saved to Supabase.'}
+            {connStatus === 'error' && (
+              <span className="text-red-600 dark:text-red-400">
+                Not connected: {connMessage}
+                <br />
+                Add <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
+                <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel environment variables and redeploy.
+              </span>
+            )}
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       <Card className="max-w-2xl">
         <form onSubmit={handleSubmit}>

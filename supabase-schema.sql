@@ -22,12 +22,15 @@ insert into expense_categories (name) values
   ('other');
 
 -- Apartments
+-- floor is text: 'M1', 'M2' (mezzanine) or '1'..'13'
 create table apartments (
   id uuid primary key default uuid_generate_v4(),
   unit_number text not null unique,
-  floor integer not null default 0,
+  floor text not null default '1',
   primary_resident_name text not null,
+  secondary_resident_name text not null default '',
   phone text not null default '',
+  phone2 text not null default '',
   email text not null default '',
   payment_interval text not null default 'monthly'
     check (payment_interval in ('monthly', 'bimonthly', 'quarterly', 'biannual', 'annual')),
@@ -43,11 +46,13 @@ create table payments (
   id uuid primary key default uuid_generate_v4(),
   apartment_id uuid not null references apartments(id) on delete cascade,
   payer_name text not null,
+  payer_relation text not null default '',
   amount numeric not null,
   method text not null check (method in ('cash', 'bank')),
   date_paid date not null,
   period_start date not null,
   period_end date not null,
+  recurring boolean not null default false,
   notes text not null default '',
   created_at timestamptz not null default now()
 );
@@ -60,6 +65,7 @@ create table expenses (
   method text not null check (method in ('cash', 'bank')),
   date date not null,
   vendor text not null,
+  recurring boolean not null default false,
   notes text not null default '',
   created_at timestamptz not null default now()
 );

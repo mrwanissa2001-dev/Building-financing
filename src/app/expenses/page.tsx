@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { useStore } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_METHODS } from "@/lib/constants"
+import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/components/ui/use-toast"
 import type { Expense, PaymentMethod } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -34,7 +37,7 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Pencil, Trash2, ArrowUpDown } from "lucide-react"
+import { Plus, Pencil, Trash2, ArrowUpDown, Download, Upload } from "lucide-react"
 
 type SortField = "date" | "amount"
 type SortDirection = "asc" | "desc"
@@ -45,6 +48,7 @@ interface ExpenseFormData {
   method: PaymentMethod
   date: string
   vendor: string
+  recurring: boolean
   notes: string
 }
 
@@ -54,11 +58,14 @@ const emptyForm: ExpenseFormData = {
   method: "cash",
   date: new Date().toISOString().split("T")[0],
   vendor: "",
+  recurring: false,
   notes: "",
 }
 
 export default function ExpensesPage() {
-  const { state, addExpense, updateExpense, deleteExpense } = useStore()
+  const { state, addExpense, updateExpense, deleteExpense, importExpenses } = useStore()
+  const { toast } = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -147,6 +154,7 @@ export default function ExpensesPage() {
       method: expense.method,
       date: expense.date,
       vendor: expense.vendor,
+      recurring: expense.recurring ?? false,
       notes: expense.notes,
     })
     setDialogOpen(true)
@@ -155,7 +163,7 @@ export default function ExpensesPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    const parsedAmount = parseFloat(form.amount)
+    const parsedAmount = parseAmount(form.amount)
     if (!form.category_id || isNaN(parsedAmount) || parsedAmount <= 0 || !form.date || !form.vendor) {
       return
     }
@@ -168,6 +176,7 @@ export default function ExpensesPage() {
         method: form.method,
         date: form.date,
         vendor: form.vendor,
+        recurring: form.recurring,
         notes: form.notes,
       })
     } else {
@@ -177,6 +186,7 @@ export default function ExpensesPage() {
         method: form.method,
         date: form.date,
         vendor: form.vendor,
+        recurring: form.recurring,
         notes: form.notes,
       })
     }
@@ -191,6 +201,61 @@ export default function ExpensesPage() {
       deleteExpense(deleteId)
       setDeleteId(null)
     }
+  }
+
+  // ── CSV export / import ──
+
+  function exportExpensesCsv() {
+    const headers = ["category", "amount", "method", "date", "vendor", "recurring", "notes"]
+    const rows = state.expenses.map((e) => [
+      getCategoryName(e.category_id),
+      e.amount,
+      e.method,
+      e.date,
+      e.vendor,
+      e.recurring ? "yes" : "",
+      e.notes,
+    ])
+    downloadCsv(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const objs = csvToObjects(String(reader.result || ""))
+      let skipped = 0
+      const rows: {
+        category_name: string
+        amount: number
+        method: PaymentMethod
+        date: string
+        vendor: string
+        notes: string
+      }[] = []
+      for (const o of objs) {
+        const amount = parseAmount(o.amount || "")
+        const date = normalizeDate(o.date || "")
+        if (!o.category || isNaN(amount) || !date) { skipped++; continue }
+        rows.push({
+          category_name: o.category,
+          amount,
+          method: (o.method || "").toLowerCase() === "bank" ? "bank" : "cash",
+          date,
+          vendor: o.vendor || "",
+          notes: o.notes || "",
+        })
+      }
+      const n = await importExpenses(rows)
+      toast({
+        title: "Import complete",
+        description: `${n} expenses imported${skipped ? `, ${skipped} rows skipped` : ""}`,
+        variant: skipped && !n ? "destructive" : "success",
+      })
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+    reader.readAsText(file)
   }
 
   if (!state.loaded) {
@@ -211,10 +276,27 @@ export default function ExpensesPage() {
             Track and manage building expenses
           </p>
         </div>
-        <Button onClick={openAddDialog}>
-          <Plus className="h-4 w-4" />
-          Add Expense
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            Add Expense
+          </Button>
+          <Button variant="outline" onClick={exportExpensesCsv}>
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+        </div>
       </div>
 
       {/* Filters */}
@@ -473,6 +555,21 @@ export default function ExpensesPage() {
                     setForm((f) => ({ ...f, vendor: e.target.value }))
                   }
                   required
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-3 sm:col-span-2">
+                <div>
+                  <Label>Repeat monthly</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically add this expense again each month
+                  </p>
+                </div>
+                <Switch
+                  checked={form.recurring}
+                  onCheckedChange={(v) =>
+                    setForm((f) => ({ ...f, recurring: v }))
+                  }
                 />
               </div>
 
