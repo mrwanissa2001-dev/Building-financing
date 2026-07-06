@@ -41,6 +41,8 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select"
+import { CreatableSelect } from "@/components/ui/creatable-select"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Plus,
   Pencil,
@@ -107,7 +109,7 @@ export default function ExpensesPage() {
 }
 
 function ExpensesContent() {
-  const { state, addExpense, updateExpense, deleteExpense, importExpenses } = useStore()
+  const { state, addExpense, updateExpense, deleteExpense, importExpenses, addCategory } = useStore()
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchParams = useSearchParams()
@@ -475,23 +477,16 @@ function ExpensesContent() {
 
           <div className="min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              Start Date
+              Date Range
             </Label>
-            <Input
-              type="date"
-              value={filterDateStart}
-              onChange={(e) => setFilterDateStart(e.target.value)}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <Label className="mb-1.5 block text-xs text-muted-foreground">
-              End Date
-            </Label>
-            <Input
-              type="date"
-              value={filterDateEnd}
-              onChange={(e) => setFilterDateEnd(e.target.value)}
+            <DateRangePicker
+              align="start"
+              className="h-9 w-full justify-start font-normal"
+              value={{ start: filterDateStart, end: filterDateEnd }}
+              onChange={(r) => {
+                setFilterDateStart(r.start)
+                setFilterDateEnd(r.end)
+              }}
             />
           </div>
 
@@ -742,8 +737,15 @@ function ExpensesContent() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
-                <Select
+                <CreatableSelect
+                  id="category"
+                  capitalize
+                  placeholder="Select category"
+                  createLabel="Add category…"
+                  inputPlaceholder="New category name…"
                   value={form.category_id}
+                  options={state.categories.map((cat) => ({ value: cat.id, label: cat.name }))}
+                  onCreate={(name) => addCategory(name).id}
                   onValueChange={(val) => {
                     const people = peopleFor(val)
                     setForm((f) => ({
@@ -754,18 +756,7 @@ function ExpensesContent() {
                     }))
                     setCustomVendor(people.length === 0)
                   }}
-                >
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 {formPeople.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {formPeople.length} {formPeople.length === 1 ? "person works" : "people work"} under this category

@@ -31,7 +31,8 @@ import {
 } from "recharts"
 import { useComputed } from "@/hooks/use-computed"
 import { useStore } from "@/lib/store"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
+import { monthKey, currentMonthKey, addMonthsToKey, monthsBetween, monthKeyLabel } from "@/lib/months"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -39,12 +40,17 @@ import { StatCard } from "@/components/dashboard/stat-card"
 import { TrendBadge } from "@/components/dashboard/trend-badge"
 import { Sparkline } from "@/components/dashboard/sparkline"
 import { ChartTooltip } from "@/components/dashboard/chart-tooltip"
-import { RangeToggle, type RangeKey } from "@/components/dashboard/range-toggle"
+import { DateRangePicker, rangeLabel, type DateRange } from "@/components/ui/date-range-picker"
 
-const RANGE_MONTHS: Record<RangeKey, number> = { "3M": 3, "6M": 6, "12M": 12 }
-
-// emerald sequential ramp — magnitude-ordered slices of the category donut
-const SEQ = ["var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)", "var(--seq-5)"]
+// distinct categorical hues so each expense category reads apart in the donut
+const CAT = [
+  "var(--cat-1)",
+  "var(--cat-2)",
+  "var(--cat-3)",
+  "var(--cat-4)",
+  "var(--cat-5)",
+  "var(--cat-6)",
+]
 
 /** signed percent change; null when there's no baseline to compare against */
 function pctDelta(curr: number, prev: number): number | null {
@@ -104,12 +110,22 @@ export default function DashboardPage() {
     occupancyBreakdown,
     overdueAlerts,
     getMonthlyIncomeExpenses,
-    expensesByCategory,
     runningBalance,
     budgetVsActual,
   } = useComputed()
 
-  const [range, setRange] = useState<RangeKey>("12M")
+  // Date range scopes the activity charts + transaction tables below.
+  // Defaults to the current year (a named preset, so the trigger reads "This year").
+  const [dateRange, setDateRange] = useState<DateRange>(() => {
+    const y = new Date().getFullYear()
+    return { start: `${y}-01-01`, end: `${y}-12-31` }
+  })
+  const rangeStart = dateRange.start
+  const rangeEnd = dateRange.end
+  const inRange = useMemo(
+    () => (d: string) => (!rangeStart || d >= rangeStart) && (!rangeEnd || d <= rangeEnd),
+    [rangeStart, rangeEnd]
+  )
 
   // Always 12 months of series for the sparklines + deltas, regardless of range.
   const months12 = useMemo(() => getMonthlyIncomeExpenses(12), [getMonthlyIncomeExpenses])
@@ -146,29 +162,95 @@ export default function DashboardPage() {
       ? pctDelta(balanceSeries[balanceSeries.length - 1], balanceSeries[balanceSeries.length - 2])
       : null
 
-  // Range-driven series for the time-series charts.
-  const monthsInRange = useMemo(
-    () => getMonthlyIncomeExpenses(RANGE_MONTHS[range]),
-    [getMonthlyIncomeExpenses, range]
-  )
-  const balanceInRange = useMemo(() => {
-    if (runningBalance.length === 0) return []
-    const cutoff = new Date()
-    cutoff.setMonth(cutoff.getMonth() - RANGE_MONTHS[range])
-    const cutKey = cutoff.toISOString().slice(0, 10)
-    const filtered = runningBalance.filter((e) => e.date >= cutKey)
-    return filtered.length > 0 ? filtered : runningBalance.slice(-2)
-  }, [runningBalance, range])
+  // category / unit name lookups for the range-scoped views
+  const catName = useMemo(() => {
+    const m = new Map(state.categories.map((c) => [c.id, c.name]))
+    return (id: string) => {
+      const n = m.get(id) ?? "other"
+      return n.charAt(0).toUpperCase() + n.slice(1)
+    }
+  }, [state.categories])
+  const unitOf = useMemo(() => {
+    const m = new Map(state.apartments.map((a) => [a.id, a.unit_number]))
+    return (id: string) => m.get(id) ?? "?"
+  }, [state.apartments])
 
-  // Category donut: top 5 slices, remainder folded into "Other".
+  // Monthly income vs expenses across the selected span.
+  const monthsInRange = useMemo(() => {
+    const endKey = rangeEnd ? monthKey(rangeEnd) : currentMonthKey()
+    let startKey = rangeStart ? monthKey(rangeStart) : ""
+    if (!startKey) {
+      const dates = [
+        ...state.payments.map((p) => p.date_paid),
+        ...state.expenses.map((e) => e.date),
+      ]
+        .filter(Boolean)
+        .sort()
+      startKey = dates.length ? monthKey(dates[0]) : addMonthsToKey(endKey, -11)
+    }
+    // cap the span so the bar chart stays readable
+    if (monthsBetween(startKey, endKey) > 23) startKey = addMonthsToKey(endKey, -23)
+    const keys: string[] = []
+    for (let k = startKey; k <= endKey && keys.length < 36; k = addMonthsToKey(k, 1)) keys.push(k)
+
+    const income = new Map<string, number>()
+    const expense = new Map<string, number>()
+    for (const p of state.payments) if (inRange(p.date_paid)) {
+      const k = monthKey(p.date_paid)
+      income.set(k, (income.get(k) ?? 0) + p.amount)
+    }
+    for (const e of state.expenses) if (inRange(e.date)) {
+      const k = monthKey(e.date)
+      expense.set(k, (expense.get(k) ?? 0) + e.amount)
+    }
+    return keys.map((k) => ({
+      month: monthKeyLabel(k),
+      income: income.get(k) ?? 0,
+      expenses: expense.get(k) ?? 0,
+    }))
+  }, [state.payments, state.expenses, rangeStart, rangeEnd, inRange])
+
+  // Running balance points that fall inside the range.
+  const balanceInRange = useMemo(() => {
+    const filtered = runningBalance.filter((e) => inRange(e.date))
+    return filtered.length > 0 ? filtered : runningBalance.slice(-2)
+  }, [runningBalance, inRange])
+
+  // Category donut within the range — top 5 + "Other".
   const donutData = useMemo(() => {
-    const sorted = [...expensesByCategory]
-    if (sorted.length <= 5) return sorted
-    const top = sorted.slice(0, 4)
-    const rest = sorted.slice(4).reduce((s, c) => s + c.amount, 0)
+    const map = new Map<string, number>()
+    for (const e of state.expenses) {
+      if (!inRange(e.date)) continue
+      const name = catName(e.category_id)
+      map.set(name, (map.get(name) ?? 0) + e.amount)
+    }
+    const sorted = Array.from(map.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+    if (sorted.length <= 6) return sorted
+    const top = sorted.slice(0, 5)
+    const rest = sorted.slice(5).reduce((s, c) => s + c.amount, 0)
     return [...top, { category: "Other", amount: rest }]
-  }, [expensesByCategory])
+  }, [state.expenses, inRange, catName])
   const donutTotal = donutData.reduce((s, d) => s + d.amount, 0)
+
+  // Recent transactions within the range for the two dashboard tables.
+  const recentExpenses = useMemo(
+    () =>
+      [...state.expenses]
+        .filter((e) => inRange(e.date))
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 8),
+    [state.expenses, inRange]
+  )
+  const recentPayments = useMemo(
+    () =>
+      [...state.payments]
+        .filter((p) => inRange(p.date_paid))
+        .sort((a, b) => b.date_paid.localeCompare(a.date_paid))
+        .slice(0, 8),
+    [state.payments, inRange]
+  )
 
   // Cash vs bank split of the standing balance (where the money sits).
   const cash = dashboardStats.cash_on_hand
@@ -219,7 +301,7 @@ export default function DashboardPage() {
             {state.settings.building_name || "Building"} overview
           </h1>
         </div>
-        <RangeToggle value={range} onChange={setRange} />
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 
       {/* ── Hero balance + primary stat tiles ──────────────── */}
@@ -327,7 +409,7 @@ export default function DashboardPage() {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold tracking-tight">Income vs expenses</h2>
-              <p className="text-sm text-muted-foreground">Monthly, trailing {RANGE_MONTHS[range]} months</p>
+              <p className="text-sm text-muted-foreground">Monthly · {rangeLabel(dateRange)}</p>
             </div>
             <div className="flex items-center gap-4 text-xs">
               <span className="flex items-center gap-1.5">
@@ -443,7 +525,7 @@ export default function DashboardPage() {
         <Card className="p-5">
           <div className="mb-2">
             <h2 className="font-semibold tracking-tight">Expenses by category</h2>
-            <p className="text-sm text-muted-foreground">Year to date</p>
+            <p className="text-sm text-muted-foreground">{rangeLabel(dateRange)}</p>
           </div>
           {donutData.length > 0 ? (
             <>
@@ -463,7 +545,7 @@ export default function DashboardPage() {
                       strokeWidth={2}
                     >
                       {donutData.map((_, i) => (
-                        <Cell key={i} fill={SEQ[i % SEQ.length]} />
+                        <Cell key={i} fill={CAT[i % CAT.length]} />
                       ))}
                     </Pie>
                     <Tooltip content={<ChartTooltip />} />
@@ -477,7 +559,7 @@ export default function DashboardPage() {
               <div className="mt-3 space-y-1.5">
                 {donutData.map((d, i) => (
                   <div key={d.category} className="flex items-center gap-2 text-sm">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: SEQ[i % SEQ.length] }} />
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CAT[i % CAT.length] }} />
                     <span className="truncate text-muted-foreground">{d.category}</span>
                     <span className="nums ml-auto font-medium">{formatCurrency(d.amount)}</span>
                     <span className="nums w-9 text-right text-xs text-muted-foreground">
@@ -551,6 +633,115 @@ export default function DashboardPage() {
               goodWhenOver={false}
             />
           </div>
+        </Card>
+      </div>
+
+      {/* ── Recent payments · Recent expenses (range-scoped) ── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Recent payments */}
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--chart-1)_14%,transparent)]">
+                <TrendingUp className="h-4 w-4" style={{ color: "var(--chart-1)" }} />
+              </span>
+              <div>
+                <h2 className="font-semibold tracking-tight">Recent payments</h2>
+                <p className="text-sm text-muted-foreground">{rangeLabel(dateRange)}</p>
+              </div>
+            </div>
+            <Link
+              href={`/apartments?start=${rangeStart}&end=${rangeEnd}`}
+              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          {recentPayments.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="pb-2.5 pr-4 font-medium">Date</th>
+                    <th className="pb-2.5 pr-4 font-medium">Unit</th>
+                    <th className="pb-2.5 pr-4 font-medium">Payer</th>
+                    <th className="pb-2.5 pr-4 text-right font-medium">Amount</th>
+                    <th className="pb-2.5 font-medium">Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentPayments.map((p) => (
+                    <tr key={p.id} className="border-b transition-colors last:border-0 hover:bg-muted/40">
+                      <td className="whitespace-nowrap py-2.5 pr-4 text-muted-foreground">{formatDate(p.date_paid)}</td>
+                      <td className="py-2.5 pr-4">
+                        <Link href={`/apartments?id=${p.apartment_id}`} className="font-medium text-primary underline-offset-4 hover:underline">
+                          {unitOf(p.apartment_id)}
+                        </Link>
+                      </td>
+                      <td className="max-w-[9rem] truncate py-2.5 pr-4">{p.payer_name}</td>
+                      <td className="nums py-2.5 pr-4 text-right font-medium">{formatCurrency(p.amount)}</td>
+                      <td className="py-2.5">
+                        <Badge variant={p.method === "cash" ? "outline" : "secondary"} className="capitalize">{p.method}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="py-10 text-center text-muted-foreground">No payments in this period</p>
+          )}
+        </Card>
+
+        {/* Recent expenses */}
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--chart-5)_14%,transparent)]">
+                <TrendingDown className="h-4 w-4" style={{ color: "var(--chart-5)" }} />
+              </span>
+              <div>
+                <h2 className="font-semibold tracking-tight">Recent expenses</h2>
+                <p className="text-sm text-muted-foreground">{rangeLabel(dateRange)}</p>
+              </div>
+            </div>
+            <Link
+              href={`/expenses?start=${rangeStart}&end=${rangeEnd}`}
+              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          {recentExpenses.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="pb-2.5 pr-4 font-medium">Date</th>
+                    <th className="pb-2.5 pr-4 font-medium">Category</th>
+                    <th className="pb-2.5 pr-4 font-medium">Vendor</th>
+                    <th className="pb-2.5 pr-4 text-right font-medium">Amount</th>
+                    <th className="pb-2.5 font-medium">Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentExpenses.map((e) => (
+                    <tr key={e.id} className="border-b transition-colors last:border-0 hover:bg-muted/40">
+                      <td className="whitespace-nowrap py-2.5 pr-4 text-muted-foreground">{formatDate(e.date)}</td>
+                      <td className="py-2.5 pr-4 font-medium">{catName(e.category_id)}</td>
+                      <td className="max-w-[9rem] truncate py-2.5 pr-4 text-muted-foreground">{e.vendor || "—"}</td>
+                      <td className="nums py-2.5 pr-4 text-right font-medium">{formatCurrency(e.amount)}</td>
+                      <td className="py-2.5">
+                        <Badge variant={e.method === "cash" ? "outline" : "secondary"} className="capitalize">{e.method}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="py-10 text-center text-muted-foreground">No expenses in this period</p>
+          )}
         </Card>
       </div>
 

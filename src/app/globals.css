@@ -44,6 +44,12 @@
   --color-seq-3: var(--seq-3);
   --color-seq-4: var(--seq-4);
   --color-seq-5: var(--seq-5);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
   --color-pos: var(--pos);
   --color-neg: var(--neg);
   --radius-sm: calc(var(--radius) - 4px);
@@ -118,6 +124,14 @@
   --seq-4: #28ab81;
   --seq-5: #5cc79f;
 
+  /* distinct categorical hues for the category donut (validated CVD ≥ 17) */
+  --cat-1: #0b7a55;
+  --cat-2: #c8891f;
+  --cat-3: #8f4a86;
+  --cat-4: #2a72b8;
+  --cat-5: #c1502e;
+  --cat-6: #b5487f;
+
   --hero-from: #0b7a55;
   --hero-to: #0a5f45;
 }
@@ -173,6 +187,13 @@
   --seq-3: #33ab7d;
   --seq-4: #52c296;
   --seq-5: #8ad9bd;
+
+  --cat-1: #22a074;
+  --cat-2: #bd8629;
+  --cat-3: #b06aa0;
+  --cat-4: #5b93d0;
+  --cat-5: #e0674a;
+  --cat-6: #cf6f9f;
 
   --hero-from: #0f7a58;
   --hero-to: #0a5b43;
