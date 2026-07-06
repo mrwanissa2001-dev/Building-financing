@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
+import { useLayout } from "@/lib/layout"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from "@/lib/constants"
 import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
@@ -110,6 +111,8 @@ export default function ExpensesPage() {
 
 function ExpensesContent() {
   const { state, addExpense, updateExpense, deleteExpense, importExpenses, addCategory } = useStore()
+  const { visibleKeys } = useLayout()
+  const expOrder = visibleKeys("expenses")
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchParams = useSearchParams()
@@ -529,6 +532,10 @@ function ExpensesContent() {
         )}
       </div>
 
+      {/* Customisable widgets — order & visibility from Settings */}
+      <div className="flex flex-col gap-6">
+      {expOrder.includes("recurring_grid") && (
+      <div style={{ order: expOrder.indexOf("recurring_grid") }}>
       {/* Recurring expenses month grid */}
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -611,6 +618,10 @@ function ExpensesContent() {
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {expOrder.includes("expenses_table") && (
+      <div style={{ order: expOrder.indexOf("expenses_table") }}>
       {/* Table */}
       <div className="rounded-lg border border-border">
         <div className="overflow-x-auto">
@@ -718,6 +729,9 @@ function ExpensesContent() {
             </TableBody>
           </Table>
         </div>
+      </div>
+      </div>
+      )}
       </div>
 
       {/* Add / Edit Dialog */}

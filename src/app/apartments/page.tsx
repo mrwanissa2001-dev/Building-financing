@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
+import { useLayout } from "@/lib/layout"
 import { useComputed } from "@/hooks/use-computed"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { OCCUPANCY_STATUSES, PAYMENT_METHODS, buildingFloors, PAYER_RELATIONS, relationLabel } from "@/lib/constants"
@@ -149,6 +150,7 @@ export default function ApartmentsPage() {
 
 function ApartmentsContent() {
   const { state, addApartment, updateApartment, deleteApartment, addPayment, updatePayment, deletePayment, importPayments } = useStore()
+  const { visibleKeys } = useLayout()
   const { apartmentsWithStatus, getPaymentsForApartment, getMonthCells, getCoverage } = useComputed()
   const { toast } = useToast()
 
@@ -851,7 +853,8 @@ function ApartmentsContent() {
     )
   }
 
-  // Main List View
+  // Main List View — order & visibility of the three sections from Settings
+  const aptOrder = visibleKeys("apartments")
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -961,6 +964,10 @@ function ApartmentsContent() {
         </CardContent>
       </Card>
 
+      {/* Customisable widgets — order & visibility from Settings */}
+      <div className="flex flex-col gap-6">
+      {aptOrder.includes("summary") && (
+      <div style={{ order: aptOrder.indexOf("summary") }}>
       {/* Summary Table */}
       <Card>
         <CardHeader>
@@ -1026,6 +1033,10 @@ function ApartmentsContent() {
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {aptOrder.includes("collection_grid") && (
+      <div style={{ order: aptOrder.indexOf("collection_grid") }}>
       {/* Monthly Collection Grid */}
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -1090,6 +1101,10 @@ function ApartmentsContent() {
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {aptOrder.includes("payment_log") && (
+      <div style={{ order: aptOrder.indexOf("payment_log") }}>
       {/* Payment Log */}
       <Card>
         <CardHeader>
@@ -1156,6 +1171,10 @@ function ApartmentsContent() {
           </div>
         </CardContent>
       </Card>
+
+      </div>
+      )}
+      </div>
 
       {/* Add Apartment Dialog */}
       <Dialog open={aptDialogOpen} onOpenChange={setAptDialogOpen}>

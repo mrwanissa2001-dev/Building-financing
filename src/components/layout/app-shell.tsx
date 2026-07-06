@@ -3,6 +3,7 @@
 import { Sidebar } from "./sidebar"
 import { useTheme } from "@/hooks/use-theme"
 import { StoreProvider } from "@/lib/store"
+import { LayoutProvider } from "@/lib/layout"
 import { ToastProvider } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -11,6 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <StoreProvider>
+      <LayoutProvider>
       <ToastProvider>
         <div className="flex min-h-screen">
           <Sidebar theme={theme} toggleTheme={toggleTheme} />
@@ -22,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <Toaster />
       </ToastProvider>
+      </LayoutProvider>
     </StoreProvider>
   )
 }
