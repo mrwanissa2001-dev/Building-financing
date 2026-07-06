@@ -12,11 +12,14 @@ import type {
   Payment,
   Expense,
   ExpenseCategory,
+  CategoryPerson,
+  YearlyHistory,
   BuildingSettings,
   PaymentMethod,
 } from './types'
 import {
   fetchAllData,
+  DEFAULT_SETTINGS,
   insertApartment as sbInsertApartment,
   updateApartmentRow as sbUpdateApartment,
   deleteApartmentRow as sbDeleteApartment,
@@ -27,6 +30,12 @@ import {
   updateExpenseRow as sbUpdateExpense,
   deleteExpenseRow as sbDeleteExpense,
   insertCategory as sbInsertCategory,
+  insertPerson as sbInsertPerson,
+  updatePersonRow as sbUpdatePerson,
+  deletePersonRow as sbDeletePerson,
+  insertHistory as sbInsertHistory,
+  updateHistoryRow as sbUpdateHistory,
+  deleteHistoryRow as sbDeleteHistory,
   updateSettingsRow as sbUpdateSettings,
 } from './supabase-data'
 import {
@@ -45,6 +54,8 @@ interface StoreState {
   payments: Payment[]
   expenses: Expense[]
   categories: ExpenseCategory[]
+  people: CategoryPerson[]
+  history: YearlyHistory[]
   settings: BuildingSettings
   initialized: boolean
   loaded: boolean
@@ -55,7 +66,9 @@ const INITIAL_STATE: StoreState = {
   payments: [],
   expenses: [],
   categories: [],
-  settings: { id: '', total_apartments: 0, expected_yearly_income: 0, expected_yearly_expenditure: 0 },
+  people: [],
+  history: [],
+  settings: DEFAULT_SETTINGS,
   initialized: false,
   loaded: false,
 }
@@ -74,6 +87,12 @@ type StoreAction =
   | { type: 'UPDATE_EXPENSE'; payload: Expense }
   | { type: 'DELETE_EXPENSE'; payload: string }
   | { type: 'ADD_CATEGORY'; payload: ExpenseCategory }
+  | { type: 'ADD_PERSON'; payload: CategoryPerson }
+  | { type: 'UPDATE_PERSON'; payload: CategoryPerson }
+  | { type: 'DELETE_PERSON'; payload: string }
+  | { type: 'ADD_HISTORY'; payload: YearlyHistory }
+  | { type: 'UPDATE_HISTORY'; payload: YearlyHistory }
+  | { type: 'DELETE_HISTORY'; payload: string }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
 
 // ── Reducer ──
@@ -140,6 +159,43 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
     case 'ADD_CATEGORY':
       return { ...state, categories: [...state.categories, action.payload] }
 
+    case 'ADD_PERSON':
+      return { ...state, people: [...state.people, action.payload] }
+
+    case 'UPDATE_PERSON':
+      return {
+        ...state,
+        people: state.people.map((p) =>
+          p.id === action.payload.id ? action.payload : p
+        ),
+      }
+
+    case 'DELETE_PERSON':
+      return {
+        ...state,
+        people: state.people.filter((p) => p.id !== action.payload),
+      }
+
+    case 'ADD_HISTORY':
+      return {
+        ...state,
+        history: [...state.history, action.payload].sort((a, b) => a.year - b.year),
+      }
+
+    case 'UPDATE_HISTORY':
+      return {
+        ...state,
+        history: state.history
+          .map((h) => (h.id === action.payload.id ? action.payload : h))
+          .sort((a, b) => a.year - b.year),
+      }
+
+    case 'DELETE_HISTORY':
+      return {
+        ...state,
+        history: state.history.filter((h) => h.id !== action.payload),
+      }
+
     case 'UPDATE_SETTINGS':
       return {
         ...state,
@@ -195,6 +251,12 @@ interface StoreContextValue {
   updateExpense: (expense: Expense) => void
   deleteExpense: (id: string) => void
   addCategory: (name: string) => ExpenseCategory
+  addPerson: (categoryId: string, name: string) => CategoryPerson
+  updatePerson: (person: CategoryPerson) => void
+  deletePerson: (id: string) => void
+  addHistory: (data: Omit<YearlyHistory, 'id'>) => YearlyHistory
+  updateHistory: (row: YearlyHistory) => void
+  deleteHistory: (id: string) => void
   updateSettings: (data: Partial<BuildingSettings>) => void
 
   importPayments: (rows: Omit<Payment, 'id' | 'created_at'>[]) => number
@@ -268,8 +330,9 @@ function buildRecurringExpenses(expenses: Expense[]): Omit<Expense, 'id' | 'crea
   }
 
   for (const latest of latestBySeries.values()) {
+    const interval = Math.max(1, latest.recurring_interval ?? 1)
     const dayOfMonth = Number(latest.date.slice(8, 10)) || 1
-    let mk = addMonthsToKey(monthKey(latest.date), 1)
+    let mk = addMonthsToKey(monthKey(latest.date), interval)
     let guard = 0
     while (mk <= nowKey && guard < 24) {
       const [y, m] = mk.split('-').map(Number)
@@ -281,9 +344,10 @@ function buildRecurringExpenses(expenses: Expense[]): Omit<Expense, 'id' | 'crea
         date: `${mk}-${String(Math.min(dayOfMonth, lastDay)).padStart(2, '0')}`,
         vendor: latest.vendor,
         recurring: true,
+        recurring_interval: interval,
         notes: '(auto recurring)',
       })
-      mk = addMonthsToKey(mk, 1)
+      mk = addMonthsToKey(mk, interval)
       guard++
     }
   }
@@ -304,6 +368,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             payments: data.payments,
             expenses: data.expenses,
             categories: data.categories,
+            people: data.people,
+            history: data.history,
             settings: data.settings,
             initialized: true,
             loaded: true,
@@ -519,6 +585,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     sbInsertCategory(cat)
     return cat
   }, [])
+  const addPerson = useCallback((categoryId: string, name: string): CategoryPerson => {
+    const person: CategoryPerson = { id: crypto.randomUUID(), category_id: categoryId, name }
+    dispatch({ type: 'ADD_PERSON', payload: person })
+    sbInsertPerson(person)
+    return person
+  }, [])
+  const updatePerson = useCallback((person: CategoryPerson) => {
+    dispatch({ type: 'UPDATE_PERSON', payload: person })
+    sbUpdatePerson(person)
+  }, [])
+  const deletePerson = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_PERSON', payload: id })
+    sbDeletePerson(id)
+  }, [])
+  const addHistory = useCallback((data: Omit<YearlyHistory, 'id'>): YearlyHistory => {
+    const row: YearlyHistory = { ...data, id: crypto.randomUUID() }
+    dispatch({ type: 'ADD_HISTORY', payload: row })
+    sbInsertHistory(row)
+    return row
+  }, [])
+  const updateHistory = useCallback((row: YearlyHistory) => {
+    dispatch({ type: 'UPDATE_HISTORY', payload: row })
+    sbUpdateHistory(row)
+  }, [])
+  const deleteHistory = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_HISTORY', payload: id })
+    sbDeleteHistory(id)
+  }, [])
   const updateSettings = useCallback((data: Partial<BuildingSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: data })
     sbUpdateSettings(data)
@@ -577,6 +671,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           date: r.date,
           vendor: r.vendor,
           recurring: false,
+          recurring_interval: 1,
           notes: r.notes,
         }
         const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
@@ -606,6 +701,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateExpense,
     deleteExpense,
     addCategory,
+    addPerson,
+    updatePerson,
+    deletePerson,
+    addHistory,
+    updateHistory,
+    deleteHistory,
     updateSettings,
     importPayments,
     importExpenses,

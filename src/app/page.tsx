@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Wallet, Landmark, DollarSign, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
+import { Wallet, Landmark, DollarSign, TrendingUp, TrendingDown, AlertTriangle, History } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -110,6 +110,14 @@ export default function DashboardPage() {
     return <DashboardSkeleton />
   }
 
+  // this-month range for the "Spent This Month" card link
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, "0")
+  const monthStart = `${y}-${m}-01`
+  const monthEnd = `${y}-${m}-${String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`
+
+  // each card links to the page (with filters preset) that explains its number
   const kpiCards = [
     {
       label: "Cash on Hand",
@@ -117,6 +125,7 @@ export default function DashboardPage() {
       icon: Wallet,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-50 dark:bg-emerald-950",
+      href: "/apartments?method=cash",
     },
     {
       label: "Bank Balance",
@@ -124,6 +133,7 @@ export default function DashboardPage() {
       icon: Landmark,
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-50 dark:bg-blue-950",
+      href: "/apartments?method=bank",
     },
     {
       label: "Total Balance",
@@ -131,6 +141,7 @@ export default function DashboardPage() {
       icon: DollarSign,
       color: "text-violet-600 dark:text-violet-400",
       bg: "bg-violet-50 dark:bg-violet-950",
+      href: "/apartments",
     },
     {
       label: "Collected This Month",
@@ -138,6 +149,7 @@ export default function DashboardPage() {
       icon: TrendingUp,
       color: "text-green-600 dark:text-green-400",
       bg: "bg-green-50 dark:bg-green-950",
+      href: "/apartments",
     },
     {
       label: "Spent This Month",
@@ -145,6 +157,7 @@ export default function DashboardPage() {
       icon: TrendingDown,
       color: "text-red-600 dark:text-red-400",
       bg: "bg-red-50 dark:bg-red-950",
+      href: `/expenses?start=${monthStart}&end=${monthEnd}`,
     },
   ]
 
@@ -175,27 +188,33 @@ export default function DashboardPage() {
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Building finance overview</p>
+        <p className="text-muted-foreground">
+          {state.settings.building_name
+            ? `${state.settings.building_name} — finance overview`
+            : "Building finance overview"}
+        </p>
       </div>
 
-      {/* 1. KPI Cards */}
+      {/* 1. KPI Cards — each links to the relevant page, filters preset */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon
           return (
-            <Card key={kpi.label}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription className="text-sm font-medium">
-                  {kpi.label}
-                </CardDescription>
-                <div className={`rounded-md p-2 ${kpi.bg}`}>
-                  <Icon className={`h-4 w-4 ${kpi.color}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(kpi.value)}</div>
-              </CardContent>
-            </Card>
+            <Link key={kpi.label} href={kpi.href} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/50 cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardDescription className="text-sm font-medium">
+                    {kpi.label}
+                  </CardDescription>
+                  <div className={`rounded-md p-2 ${kpi.bg}`}>
+                    <Icon className={`h-4 w-4 ${kpi.color}`} />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(kpi.value)}</div>
+                </CardContent>
+              </Card>
+            </Link>
           )
         })}
       </div>
@@ -493,7 +512,66 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* 5. Overdue Alerts */}
+      {/* 5. Previous Years (migrated totals) */}
+      {state.history.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>Previous Years</CardTitle>
+            </div>
+            <CardDescription>
+              Migrated yearly totals — edit them in Building Setup
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-3 pr-4 font-medium">Year</th>
+                    <th className="pb-3 pr-4 font-medium">Income</th>
+                    <th className="pb-3 pr-4 font-medium">Expenditure</th>
+                    <th className="pb-3 pr-4 font-medium">Net</th>
+                    <th className="pb-3 font-medium">Expenditure Breakdown</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.history.map((h) => {
+                    const net = h.income - h.expenditure
+                    const breakdown = Object.entries(h.expense_breakdown).sort((a, b) => b[1] - a[1])
+                    return (
+                      <tr key={h.id} className="border-b last:border-0">
+                        <td className="py-3 pr-4 font-medium">{h.year}</td>
+                        <td className="py-3 pr-4">{formatCurrency(h.income)}</td>
+                        <td className="py-3 pr-4">{formatCurrency(h.expenditure)}</td>
+                        <td className={`py-3 pr-4 font-medium ${net < 0 ? "text-destructive" : "text-green-600 dark:text-green-400"}`}>
+                          {formatCurrency(net)}
+                        </td>
+                        <td className="py-3">
+                          {breakdown.length === 0 ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {breakdown.map(([name, pct]) => (
+                                <Badge key={name} variant="outline" className="font-normal capitalize">
+                                  {name} {pct}% · {formatCurrency((h.expenditure * pct) / 100)}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 6. Overdue Alerts */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">

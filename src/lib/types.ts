@@ -14,6 +14,7 @@ export type PayerRelation = '' | 'father' | 'mother' | 'sister' | 'brother' | 's
 export interface Apartment {
   id: string
   unit_number: string
+  building_no: number
   floor: string
   primary_resident_name: string
   secondary_resident_name: string
@@ -45,6 +46,9 @@ export interface Payment {
   created_at: string
 }
 
+// recurring_interval is the number of months between occurrences of a
+// recurring expense (1 = monthly, 3 = quarterly, ...); ignored when
+// recurring is false
 export interface Expense {
   id: string
   category_id: string
@@ -53,6 +57,7 @@ export interface Expense {
   date: string
   vendor: string
   recurring: boolean
+  recurring_interval: number
   notes: string
   created_at: string
 }
@@ -62,11 +67,36 @@ export interface ExpenseCategory {
   name: string
 }
 
+// A person who works under an expense category (e.g. the security
+// guards) — selectable as the vendor when adding an expense
+export interface CategoryPerson {
+  id: string
+  category_id: string
+  name: string
+}
+
+// One migrated prior year: totals only, with an optional percentage
+// breakdown of the expenditure keyed by category name
+export interface YearlyHistory {
+  id: string
+  year: number
+  income: number
+  expenditure: number
+  expense_breakdown: Record<string, number>
+}
+
+// num_floors counts the numbered floors (1..N); mezzanine_floors adds
+// M1..Mn before them. apartments_per_floor 0 = no limit enforced.
 export interface BuildingSettings {
   id: string
+  building_name: string
   total_apartments: number
   expected_yearly_income: number
   expected_yearly_expenditure: number
+  num_buildings: number
+  num_floors: number
+  mezzanine_floors: number
+  apartments_per_floor: number
 }
 
 // ── Computed types ──
