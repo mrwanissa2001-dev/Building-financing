@@ -1,18 +1,20 @@
 "use client"
 
-import { useState, useMemo, useEffect, Suspense } from "react"
+import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
 import { useComputed } from "@/hooks/use-computed"
-import { formatCurrency, formatDate, cn } from "@/lib/utils"
-import { PAYMENT_INTERVALS, OCCUPANCY_STATUSES, PAYMENT_METHODS } from "@/lib/constants"
-import type { Apartment, ApartmentWithStatus, PaymentStatus, OccupancyStatus, PaymentMethod, PaymentInterval } from "@/lib/types"
+import { formatCurrency, formatDate, formatMonth, cn } from "@/lib/utils"
+import { PAYMENT_INTERVALS, OCCUPANCY_STATUSES, PAYMENT_METHODS, FLOORS, PAYER_RELATIONS } from "@/lib/constants"
+import { buildCsv, csvToObjects, downloadCsv, normalizeDate } from "@/lib/csv"
+import type { Apartment, ApartmentWithStatus, Payment, PaymentStatus, OccupancyStatus, PaymentMethod, PaymentInterval, PayerRelation } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
   DialogContent,
@@ -47,12 +49,14 @@ import {
   Mail,
   Pencil,
   Trash2,
-  Calendar,
   DollarSign,
   Building2,
+  Download,
+  Upload,
+  Users,
 } from "lucide-react"
 
-type SortField = "unit_number" | "amount_owed" | "floor"
+type SortField = "unit_number" | "amount_owed"
 type SortDir = "asc" | "desc"
 
 const statusBadgeVariant = (status: PaymentStatus) => {
@@ -71,11 +75,16 @@ const occupancyBadgeVariant = (status: OccupancyStatus) => {
   }
 }
 
+const relationLabel = (value: PayerRelation) =>
+  PAYER_RELATIONS.find((r) => r.value === value)?.label ?? "—"
+
 const emptyApartmentForm = {
   unit_number: "",
-  floor: "",
+  floor: "1",
   primary_resident_name: "",
+  secondary_resident_name: "",
   phone: "",
+  phone2: "",
   email: "",
   payment_interval: "monthly" as PaymentInterval,
   monthly_due_amount: "",
@@ -86,6 +95,7 @@ const emptyApartmentForm = {
 const emptyPaymentForm = {
   apartment_id: "",
   payer_name: "",
+  payer_relation: "" as PayerRelation,
   amount: "",
   method: "cash" as PaymentMethod,
   date_paid: new Date().toISOString().split("T")[0],
@@ -103,8 +113,9 @@ export default function ApartmentsPage() {
 }
 
 function ApartmentsContent() {
-  const { state, addApartment, updateApartment, deleteApartment, addPayment } = useStore()
+  const { state, addApartment, updateApartment, deleteApartment, addPayment, importPayments } = useStore()
   const { apartmentsWithStatus, getPaymentsForApartment } = useComputed()
+  const { toast } = useToast()
 
   const searchParams = useSearchParams()
 
@@ -112,6 +123,7 @@ function ApartmentsContent() {
   const [filterStatus, setFilterStatus] = useState<PaymentStatus | "all">("all")
   const [filterOccupancy, setFilterOccupancy] = useState<OccupancyStatus | "all">("all")
   const [filterMethod, setFilterMethod] = useState<PaymentMethod | "all">("all")
+  const [filterFloor, setFilterFloor] = useState<string>("all")
 
   const [sortField, setSortField] = useState<SortField>("unit_number")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -127,6 +139,8 @@ function ApartmentsContent() {
   const [payForm, setPayForm] = useState(emptyPaymentForm)
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const id = searchParams.get("id")
@@ -146,6 +160,7 @@ function ApartmentsContent() {
         (a) =>
           a.unit_number.toLowerCase().includes(q) ||
           a.primary_resident_name.toLowerCase().includes(q) ||
+          a.secondary_resident_name.toLowerCase().includes(q) ||
           paymentPayers.includes(a.id)
       )
     }
@@ -155,6 +170,9 @@ function ApartmentsContent() {
     }
     if (filterOccupancy !== "all") {
       list = list.filter((a) => a.occupancy_status === filterOccupancy)
+    }
+    if (filterFloor !== "all") {
+      list = list.filter((a) => a.floor === filterFloor)
     }
     if (filterMethod !== "all") {
       const aptIdsWithMethod = new Set(
@@ -167,12 +185,22 @@ function ApartmentsContent() {
       let cmp = 0
       if (sortField === "unit_number") cmp = a.unit_number.localeCompare(b.unit_number)
       else if (sortField === "amount_owed") cmp = a.amount_owed - b.amount_owed
-      else if (sortField === "floor") cmp = a.floor - b.floor
       return sortDir === "asc" ? cmp : -cmp
     })
 
     return list
-  }, [apartmentsWithStatus, search, filterStatus, filterOccupancy, filterMethod, sortField, sortDir, state.payments])
+  }, [apartmentsWithStatus, search, filterStatus, filterOccupancy, filterFloor, filterMethod, sortField, sortDir, state.payments])
+
+  // Every payment ever entered, newest entry first — the payment log
+  const paymentLog = useMemo(() => {
+    const aptById = new Map(state.apartments.map((a) => [a.id, a]))
+    return [...state.payments]
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+      .map((p) => ({
+        ...p,
+        unit_number: aptById.get(p.apartment_id)?.unit_number ?? "?",
+      }))
+  }, [state.payments, state.apartments])
 
   const selectedApt = useMemo(() => {
     if (!selectedId) return null
@@ -199,9 +227,11 @@ function ApartmentsContent() {
     if (!aptForm.unit_number || !aptForm.primary_resident_name || isNaN(due)) return
     addApartment({
       unit_number: aptForm.unit_number,
-      floor: parseInt(aptForm.floor) || 0,
+      floor: aptForm.floor,
       primary_resident_name: aptForm.primary_resident_name,
+      secondary_resident_name: aptForm.secondary_resident_name,
       phone: aptForm.phone,
+      phone2: aptForm.phone2,
       email: aptForm.email,
       payment_interval: aptForm.payment_interval,
       monthly_due_amount: due,
@@ -218,6 +248,7 @@ function ApartmentsContent() {
     addPayment({
       apartment_id: payForm.apartment_id,
       payer_name: payForm.payer_name,
+      payer_relation: payForm.payer_relation,
       amount,
       method: payForm.method,
       date_paid: payForm.date_paid,
@@ -247,6 +278,66 @@ function ApartmentsContent() {
     if (selectedId === id) setSelectedId(null)
   }
 
+  // ── CSV export / import ──
+
+  function exportPaymentsCsv() {
+    const aptById = new Map(state.apartments.map((a) => [a.id, a]))
+    const headers = ["unit_number", "payer_name", "payer_relation", "amount", "method", "date_paid", "period_start", "period_end", "notes", "entered_at"]
+    const rows = state.payments.map((p) => [
+      aptById.get(p.apartment_id)?.unit_number ?? "",
+      p.payer_name,
+      p.payer_relation,
+      p.amount,
+      p.method,
+      p.date_paid,
+      p.period_start,
+      p.period_end,
+      p.notes,
+      p.created_at,
+    ])
+    downloadCsv(`payments-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const objs = csvToObjects(String(reader.result || ""))
+      const aptByUnit = new Map(
+        state.apartments.map((a) => [a.unit_number.trim().toLowerCase(), a])
+      )
+      let skipped = 0
+      const rows: Omit<Payment, "id" | "created_at">[] = []
+      for (const o of objs) {
+        const apt = aptByUnit.get((o.unit_number || "").toLowerCase())
+        const amount = parseFloat(o.amount)
+        const datePaid = normalizeDate(o.date_paid || "")
+        if (!apt || isNaN(amount) || !datePaid) { skipped++; continue }
+        const relRaw = (o.payer_relation || "").toLowerCase()
+        rows.push({
+          apartment_id: apt.id,
+          payer_name: o.payer_name || apt.primary_resident_name,
+          payer_relation: PAYER_RELATIONS.some((r) => r.value === relRaw) ? (relRaw as PayerRelation) : "",
+          amount,
+          method: (o.method || "").toLowerCase() === "bank" ? "bank" : "cash",
+          date_paid: datePaid,
+          period_start: normalizeDate(o.period_start || "") || datePaid,
+          period_end: normalizeDate(o.period_end || "") || datePaid,
+          notes: o.notes || "",
+        })
+      }
+      const n = importPayments(rows)
+      toast({
+        title: "Import complete",
+        description: `${n} payments imported${skipped ? `, ${skipped} rows skipped` : ""}`,
+        variant: skipped && !n ? "destructive" : "success",
+      })
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+    reader.readAsText(file)
+  }
+
   if (!state.loaded) {
     return (
       <div className="space-y-4">
@@ -268,6 +359,7 @@ function ApartmentsContent() {
             <ArrowLeft className="mr-1 h-4 w-4" /> Back
           </Button>
           <h1 className="text-2xl font-bold">Unit {apt.unit_number}</h1>
+          <Badge variant="outline">Floor {apt.floor}</Badge>
           <Badge variant={occupancyBadgeVariant(apt.occupancy_status)}>
             {OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}
           </Badge>
@@ -299,19 +391,41 @@ function ApartmentsContent() {
                   <p className="font-medium">{apt.primary_resident_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Floor</p>
-                  <p className="font-medium">{apt.floor}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Users className="h-3 w-3" /> Second Inhabitant
+                  </p>
+                  {editing ? (
+                    <Input className="mt-1" value={editData!.secondary_resident_name} onChange={(e) => setEditData({ ...editData!, secondary_resident_name: e.target.value })} placeholder="Name" />
+                  ) : (
+                    <p className="font-medium">{apt.secondary_resident_name || "—"}</p>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{apt.phone || "N/A"}</span>
+                <div>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Phone 1
+                  </p>
+                  {editing ? (
+                    <Input className="mt-1" value={editData!.phone} onChange={(e) => setEditData({ ...editData!, phone: e.target.value })} />
+                  ) : (
+                    <p className="font-medium">{apt.phone || "N/A"}</p>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{apt.email || "N/A"}</span>
+                <div>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Phone 2
+                  </p>
+                  {editing ? (
+                    <Input className="mt-1" value={editData!.phone2} onChange={(e) => setEditData({ ...editData!, phone2: e.target.value })} />
+                  ) : (
+                    <p className="font-medium">{apt.phone2 || "—"}</p>
+                  )}
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <span>{apt.email || "N/A"}</span>
               </div>
 
               <div className="space-y-3 pt-2 border-t">
@@ -381,10 +495,9 @@ function ApartmentsContent() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Next Due Date</p>
-                  <p className="text-lg font-semibold flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {apt.next_due_date ? formatDate(apt.next_due_date) : "No payment yet"}
+                  <p className="text-sm text-muted-foreground">Last Payment</p>
+                  <p className="text-lg font-semibold">
+                    {apt.last_payment_date ? formatMonth(apt.last_payment_date) : "No payment yet"}
                   </p>
                 </div>
               </div>
@@ -420,19 +533,20 @@ function ApartmentsContent() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
                       <TableHead>Payer</TableHead>
+                      <TableHead>Relation</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Method</TableHead>
                       <TableHead>Period</TableHead>
                       <TableHead>Notes</TableHead>
+                      <TableHead className="text-right">Date Paid</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {selectedPayments.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell>{formatDate(p.date_paid)}</TableCell>
                         <TableCell>{p.payer_name}</TableCell>
+                        <TableCell>{p.payer_relation ? relationLabel(p.payer_relation) : "—"}</TableCell>
                         <TableCell className="font-medium">{formatCurrency(p.amount)}</TableCell>
                         <TableCell>
                           <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
@@ -441,6 +555,7 @@ function ApartmentsContent() {
                           {formatDate(p.period_start)} – {formatDate(p.period_end)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{p.notes || "—"}</TableCell>
+                        <TableCell className="text-right">{formatDate(p.date_paid)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -477,13 +592,26 @@ function ApartmentsContent() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">Apartments & Payments</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => { setAptForm(emptyApartmentForm); setAptDialogOpen(true) }}>
             <Building2 className="mr-1 h-4 w-4" /> Add Apartment
           </Button>
           <Button variant="outline" onClick={() => { setPayForm(emptyPaymentForm); setPayDialogOpen(true) }}>
             <DollarSign className="mr-1 h-4 w-4" /> Add Payment
           </Button>
+          <Button variant="outline" onClick={exportPaymentsCsv}>
+            <Download className="mr-1 h-4 w-4" /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="mr-1 h-4 w-4" /> Import CSV
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
         </div>
       </div>
 
@@ -508,6 +636,15 @@ function ApartmentsContent() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Select value={filterFloor} onValueChange={setFilterFloor}>
+                <SelectTrigger className="w-[130px]"><SelectValue placeholder="Floor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Floors</SelectItem>
+                  {FLOORS.map((f) => (
+                    <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as PaymentStatus | "all")}>
                 <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
@@ -536,8 +673,11 @@ function ApartmentsContent() {
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Summary Table */}
       <Card>
+        <CardHeader>
+          <CardTitle>Summary</CardTitle>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
@@ -547,23 +687,19 @@ function ApartmentsContent() {
                     Unit <SortIcon field="unit_number" />
                   </TableHead>
                   <TableHead>Resident</TableHead>
-                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("floor")}>
-                    Floor <SortIcon field="floor" />
-                  </TableHead>
                   <TableHead>Monthly Due</TableHead>
-                  <TableHead>Interval</TableHead>
                   <TableHead>Occupancy</TableHead>
                   <TableHead>Payment Status</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("amount_owed")}>
                     Amount Owed <SortIcon field="amount_owed" />
                   </TableHead>
-                  <TableHead>Next Due</TableHead>
+                  <TableHead className="text-right">Last Payment</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No apartments match your search/filters
                     </TableCell>
                   </TableRow>
@@ -576,9 +712,7 @@ function ApartmentsContent() {
                     >
                       <TableCell className="font-medium">{apt.unit_number}</TableCell>
                       <TableCell>{apt.primary_resident_name}</TableCell>
-                      <TableCell>{apt.floor}</TableCell>
                       <TableCell>{formatCurrency(apt.monthly_due_amount)}</TableCell>
-                      <TableCell>{PAYMENT_INTERVALS.find((i) => i.value === apt.payment_interval)?.label}</TableCell>
                       <TableCell>
                         <Badge variant={occupancyBadgeVariant(apt.occupancy_status)}>
                           {OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}
@@ -592,9 +726,69 @@ function ApartmentsContent() {
                       <TableCell className={cn("font-medium", apt.amount_owed > 0 && "text-destructive")}>
                         {formatCurrency(apt.amount_owed)}
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {apt.next_due_date ? formatDate(apt.next_due_date) : "—"}
+                      <TableCell className="text-right text-sm">
+                        {apt.last_payment_date ? formatMonth(apt.last_payment_date) : "—"}
                       </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Payment Log */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Log</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Every payment entry, newest first. Re-entered payments appear as separate rows with their entry date.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Entered</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Payer</TableHead>
+                  <TableHead>Relation</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Date Paid</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentLog.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No payments entered yet
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paymentLog.map((p) => (
+                    <TableRow
+                      key={p.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedId(p.apartment_id)}
+                    >
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {p.created_at ? formatDate(p.created_at) : "—"}
+                      </TableCell>
+                      <TableCell className="font-medium">{p.unit_number}</TableCell>
+                      <TableCell>{p.payer_name}</TableCell>
+                      <TableCell>{p.payer_relation ? relationLabel(p.payer_relation) : "—"}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(p.amount)}</TableCell>
+                      <TableCell>
+                        <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {formatDate(p.period_start)} – {formatDate(p.period_end)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">{formatDate(p.date_paid)}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -606,7 +800,7 @@ function ApartmentsContent() {
 
       {/* Add Apartment Dialog */}
       <Dialog open={aptDialogOpen} onOpenChange={setAptDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Apartment</DialogTitle>
           </DialogHeader>
@@ -618,22 +812,37 @@ function ApartmentsContent() {
               </div>
               <div>
                 <Label>Floor</Label>
-                <Input type="number" value={aptForm.floor} onChange={(e) => setAptForm({ ...aptForm, floor: e.target.value })} placeholder="0" />
+                <Select value={aptForm.floor} onValueChange={(v) => setAptForm({ ...aptForm, floor: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {FLOORS.map((f) => (
+                      <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>
               <Label>Primary Resident Name *</Label>
               <Input value={aptForm.primary_resident_name} onChange={(e) => setAptForm({ ...aptForm, primary_resident_name: e.target.value })} />
             </div>
+            <div>
+              <Label>Second Inhabitant</Label>
+              <Input value={aptForm.secondary_resident_name} onChange={(e) => setAptForm({ ...aptForm, secondary_resident_name: e.target.value })} placeholder="Optional" />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Phone</Label>
+                <Label>Phone 1</Label>
                 <Input value={aptForm.phone} onChange={(e) => setAptForm({ ...aptForm, phone: e.target.value })} />
               </div>
               <div>
-                <Label>Email</Label>
-                <Input type="email" value={aptForm.email} onChange={(e) => setAptForm({ ...aptForm, email: e.target.value })} />
+                <Label>Phone 2</Label>
+                <Input value={aptForm.phone2} onChange={(e) => setAptForm({ ...aptForm, phone2: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" value={aptForm.email} onChange={(e) => setAptForm({ ...aptForm, email: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -679,7 +888,7 @@ function ApartmentsContent() {
   function renderPaymentDialog() {
     return (
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Payment</DialogTitle>
           </DialogHeader>
@@ -707,9 +916,25 @@ function ApartmentsContent() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Payer Name</Label>
-              <Input value={payForm.payer_name} onChange={(e) => setPayForm({ ...payForm, payer_name: e.target.value })} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Payer Name</Label>
+                <Input value={payForm.payer_name} onChange={(e) => setPayForm({ ...payForm, payer_name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Relation to Resident</Label>
+                <Select
+                  value={payForm.payer_relation || undefined}
+                  onValueChange={(v) => setPayForm({ ...payForm, payer_relation: v as PayerRelation })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectContent>
+                    {PAYER_RELATIONS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

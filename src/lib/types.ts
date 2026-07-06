@@ -8,12 +8,17 @@ export type PaymentMethod = 'cash' | 'bank'
 
 export type PaymentStatus = 'paid' | 'due_soon' | 'overdue'
 
+export type PayerRelation = '' | 'father' | 'mother' | 'sister' | 'brother' | 'friend' | 'other'
+
+// floor is 'M1' | 'M2' (mezzanine) or '1'..'13'
 export interface Apartment {
   id: string
   unit_number: string
-  floor: number
+  floor: string
   primary_resident_name: string
+  secondary_resident_name: string
   phone: string
+  phone2: string
   email: string
   payment_interval: PaymentInterval
   monthly_due_amount: number
@@ -26,6 +31,7 @@ export interface Payment {
   id: string
   apartment_id: string
   payer_name: string
+  payer_relation: PayerRelation
   amount: number
   method: PaymentMethod
   date_paid: string
@@ -62,6 +68,7 @@ export interface BuildingSettings {
 
 export interface ApartmentWithStatus extends Apartment {
   next_due_date: string | null
+  last_payment_date: string | null
   payment_status: PaymentStatus
   days_overdue: number
   amount_owed: number

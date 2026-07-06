@@ -1,4 +1,26 @@
-import type { PaymentInterval, OccupancyStatus, PaymentMethod } from './types'
+import type { PaymentInterval, OccupancyStatus, PaymentMethod, PayerRelation } from './types'
+
+// Building floors: mezzanine M1 and M2, then 1..13
+export const FLOORS: string[] = [
+  'M1',
+  'M2',
+  ...Array.from({ length: 13 }, (_, i) => String(i + 1)),
+]
+
+// Sort order for floors (M1 first, then M2, then 1..13; unknown values last)
+export function floorIndex(floor: string): number {
+  const idx = FLOORS.indexOf(floor)
+  return idx === -1 ? FLOORS.length : idx
+}
+
+export const PAYER_RELATIONS: { value: PayerRelation; label: string }[] = [
+  { value: 'father', label: 'Father' },
+  { value: 'mother', label: 'Mother' },
+  { value: 'sister', label: 'Sister' },
+  { value: 'brother', label: 'Brother' },
+  { value: 'friend', label: 'Friend' },
+  { value: 'other', label: 'Other' },
+]
 
 export const PAYMENT_INTERVALS: { value: PaymentInterval; label: string; months: number }[] = [
   { value: 'monthly', label: 'Monthly', months: 1 },

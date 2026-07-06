@@ -48,7 +48,9 @@ export async function fetchAllData() {
 
 // ── Apartments ──
 
-export async function insertApartment(data: Omit<Apartment, 'id' | 'created_at'>) {
+// inserts include the client-generated id so local state and the
+// database always agree on row identity
+export async function insertApartment(data: Omit<Apartment, 'created_at'>) {
   if (!supabase) return null
   const { data: row, error } = await supabase
     .from('apartments')
@@ -76,7 +78,7 @@ export async function deleteApartmentRow(id: string) {
 
 // ── Payments ──
 
-export async function insertPayment(data: Omit<Payment, 'id' | 'created_at'>) {
+export async function insertPayment(data: Omit<Payment, 'created_at'>) {
   if (!supabase) return null
   const { data: row, error } = await supabase
     .from('payments')
@@ -104,7 +106,7 @@ export async function deletePaymentRow(id: string) {
 
 // ── Expenses ──
 
-export async function insertExpense(data: Omit<Expense, 'id' | 'created_at'>) {
+export async function insertExpense(data: Omit<Expense, 'created_at'>) {
   if (!supabase) return null
   const { data: row, error } = await supabase
     .from('expenses')
@@ -132,11 +134,11 @@ export async function deleteExpenseRow(id: string) {
 
 // ── Categories ──
 
-export async function insertCategory(name: string) {
+export async function insertCategory(cat: ExpenseCategory) {
   if (!supabase) return null
   const { data: row, error } = await supabase
     .from('expense_categories')
-    .insert({ name })
+    .insert(cat)
     .select()
     .single()
   if (error) { console.error('Insert category error:', error); return null }

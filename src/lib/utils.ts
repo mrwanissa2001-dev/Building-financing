@@ -6,12 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  const n = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
+  return `${n} LE`
 }
 
 export function formatDate(date: string | Date): string {
@@ -19,5 +18,13 @@ export function formatDate(date: string | Date): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+  })
+}
+
+// Month + year only, e.g. "Jun 2026"
+export function formatMonth(date: string | Date): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
   })
 }

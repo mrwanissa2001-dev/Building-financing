@@ -13,6 +13,7 @@ import type {
   Expense,
   ExpenseCategory,
   BuildingSettings,
+  PaymentMethod,
 } from './types'
 import {
   fetchAllData,
@@ -65,7 +66,6 @@ type StoreAction =
   | { type: 'UPDATE_EXPENSE'; payload: Expense }
   | { type: 'DELETE_EXPENSE'; payload: string }
   | { type: 'ADD_CATEGORY'; payload: ExpenseCategory }
-  | { type: 'UPDATE_CATEGORY'; payload: { tempId: string; row: ExpenseCategory } }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
 
 // ── Reducer ──
@@ -132,14 +132,6 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
     case 'ADD_CATEGORY':
       return { ...state, categories: [...state.categories, action.payload] }
 
-    case 'UPDATE_CATEGORY':
-      return {
-        ...state,
-        categories: state.categories.map((c) =>
-          c.id === action.payload.tempId ? action.payload.row : c
-        ),
-      }
-
     case 'UPDATE_SETTINGS':
       return {
         ...state,
@@ -196,6 +188,18 @@ interface StoreContextValue {
   deleteExpense: (id: string) => void
   addCategory: (name: string) => ExpenseCategory
   updateSettings: (data: Partial<BuildingSettings>) => void
+
+  importPayments: (rows: Omit<Payment, 'id' | 'created_at'>[]) => number
+  importExpenses: (
+    rows: {
+      category_name: string
+      amount: number
+      method: PaymentMethod
+      date: string
+      vendor: string
+      notes: string
+    }[]
+  ) => Promise<number>
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null)
@@ -363,7 +367,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (data: Omit<Apartment, 'id' | 'created_at'>): Apartment => {
       const apt: Apartment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_APARTMENT', payload: apt })
-      sbInsertApartment(data).then((row) => {
+      sbInsertApartment({ ...data, id: apt.id }).then((row) => {
         if (row) dispatch({ type: 'UPDATE_APARTMENT', payload: row })
       })
       return apt
@@ -381,7 +385,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (data: Omit<Payment, 'id' | 'created_at'>): Payment => {
       const p: Payment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_PAYMENT', payload: p })
-      sbInsertPayment(data).then((row) => {
+      sbInsertPayment({ ...data, id: p.id }).then((row) => {
         if (row) dispatch({ type: 'UPDATE_PAYMENT', payload: row })
       })
       return p
@@ -399,7 +403,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (data: Omit<Expense, 'id' | 'created_at'>): Expense => {
       const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
       dispatch({ type: 'ADD_EXPENSE', payload: e })
-      sbInsertExpense(data).then((row) => {
+      sbInsertExpense({ ...data, id: e.id }).then((row) => {
         if (row) dispatch({ type: 'UPDATE_EXPENSE', payload: row })
       })
       return e
@@ -416,15 +420,77 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const addCategory = useCallback((name: string): ExpenseCategory => {
     const cat: ExpenseCategory = { id: crypto.randomUUID(), name }
     dispatch({ type: 'ADD_CATEGORY', payload: cat })
-    sbInsertCategory(name).then((row) => {
-      if (row) dispatch({ type: 'UPDATE_CATEGORY', payload: { tempId: cat.id, row } })
-    })
+    sbInsertCategory(cat)
     return cat
   }, [])
   const updateSettings = useCallback((data: Partial<BuildingSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: data })
     sbUpdateSettings(data)
   }, [])
+
+  // -- CSV bulk import --
+
+  const importPayments = useCallback(
+    (rows: Omit<Payment, 'id' | 'created_at'>[]): number => {
+      for (const data of rows) {
+        const p: Payment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+        dispatch({ type: 'ADD_PAYMENT', payload: p })
+        sbInsertPayment({ ...data, id: p.id })
+      }
+      return rows.length
+    },
+    []
+  )
+
+  const importExpenses = useCallback(
+    async (
+      rows: {
+        category_name: string
+        amount: number
+        method: PaymentMethod
+        date: string
+        vendor: string
+        notes: string
+      }[]
+    ): Promise<number> => {
+      // resolve category names to ids, creating missing categories in
+      // Supabase first (awaited) so expense rows never reference a
+      // category id that is not yet in the database
+      const byName = new Map<string, string>(
+        state.categories.map((c) => [c.name.trim().toLowerCase(), c.id])
+      )
+
+      let imported = 0
+      for (const r of rows) {
+        const key = r.category_name.trim().toLowerCase()
+        if (!key) continue
+
+        let categoryId = byName.get(key)
+        if (!categoryId) {
+          const cat: ExpenseCategory = { id: crypto.randomUUID(), name: r.category_name.trim() }
+          await sbInsertCategory(cat)
+          dispatch({ type: 'ADD_CATEGORY', payload: cat })
+          byName.set(key, cat.id)
+          categoryId = cat.id
+        }
+
+        const data = {
+          category_id: categoryId,
+          amount: r.amount,
+          method: r.method,
+          date: r.date,
+          vendor: r.vendor,
+          notes: r.notes,
+        }
+        const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+        dispatch({ type: 'ADD_EXPENSE', payload: e })
+        sbInsertExpense({ ...data, id: e.id })
+        imported++
+      }
+      return imported
+    },
+    [state.categories]
+  )
 
   const value: StoreContextValue = {
     state,
@@ -444,6 +510,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteExpense,
     addCategory,
     updateSettings,
+    importPayments,
+    importExpenses,
   }
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

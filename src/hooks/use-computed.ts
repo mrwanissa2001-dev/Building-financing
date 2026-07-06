@@ -62,9 +62,18 @@ export function useComputed() {
       const daysOverdue = computeDaysOverdue(nextDueDate)
       const amountOwed = computeAmountOwed(apt, lastPayment)
 
+      // most recent date_paid across this apartment's payments
+      const lastPaidDate = payments
+        .filter((p) => p.apartment_id === apt.id)
+        .reduce<string | null>(
+          (max, p) => (max === null || p.date_paid > max ? p.date_paid : max),
+          null
+        )
+
       return {
         ...apt,
         next_due_date: nextDueDate,
+        last_payment_date: lastPaidDate,
         payment_status: paymentStatus,
         days_overdue: daysOverdue,
         amount_owed: amountOwed,

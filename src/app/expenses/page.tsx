@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { useStore } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PAYMENT_METHODS } from "@/lib/constants"
+import { buildCsv, csvToObjects, downloadCsv, normalizeDate } from "@/lib/csv"
+import { useToast } from "@/components/ui/use-toast"
 import type { Expense, PaymentMethod } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -34,7 +36,7 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Pencil, Trash2, ArrowUpDown } from "lucide-react"
+import { Plus, Pencil, Trash2, ArrowUpDown, Download, Upload } from "lucide-react"
 
 type SortField = "date" | "amount"
 type SortDirection = "asc" | "desc"
@@ -58,7 +60,9 @@ const emptyForm: ExpenseFormData = {
 }
 
 export default function ExpensesPage() {
-  const { state, addExpense, updateExpense, deleteExpense } = useStore()
+  const { state, addExpense, updateExpense, deleteExpense, importExpenses } = useStore()
+  const { toast } = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -193,6 +197,61 @@ export default function ExpensesPage() {
     }
   }
 
+  // ── CSV export / import ──
+
+  function exportExpensesCsv() {
+    const headers = ["category", "amount", "method", "date", "vendor", "notes", "entered_at"]
+    const rows = state.expenses.map((e) => [
+      getCategoryName(e.category_id),
+      e.amount,
+      e.method,
+      e.date,
+      e.vendor,
+      e.notes,
+      e.created_at,
+    ])
+    downloadCsv(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const objs = csvToObjects(String(reader.result || ""))
+      let skipped = 0
+      const rows: {
+        category_name: string
+        amount: number
+        method: PaymentMethod
+        date: string
+        vendor: string
+        notes: string
+      }[] = []
+      for (const o of objs) {
+        const amount = parseFloat(o.amount)
+        const date = normalizeDate(o.date || "")
+        if (!o.category || isNaN(amount) || !date) { skipped++; continue }
+        rows.push({
+          category_name: o.category,
+          amount,
+          method: (o.method || "").toLowerCase() === "bank" ? "bank" : "cash",
+          date,
+          vendor: o.vendor || "",
+          notes: o.notes || "",
+        })
+      }
+      const n = await importExpenses(rows)
+      toast({
+        title: "Import complete",
+        description: `${n} expenses imported${skipped ? `, ${skipped} rows skipped` : ""}`,
+        variant: skipped && !n ? "destructive" : "success",
+      })
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+    reader.readAsText(file)
+  }
+
   if (!state.loaded) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -211,10 +270,27 @@ export default function ExpensesPage() {
             Track and manage building expenses
           </p>
         </div>
-        <Button onClick={openAddDialog}>
-          <Plus className="h-4 w-4" />
-          Add Expense
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            Add Expense
+          </Button>
+          <Button variant="outline" onClick={exportExpensesCsv}>
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+        </div>
       </div>
 
       {/* Filters */}
