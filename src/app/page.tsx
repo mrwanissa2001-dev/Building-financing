@@ -1,7 +1,18 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Wallet, Landmark, DollarSign, TrendingUp, TrendingDown, AlertTriangle, History } from "lucide-react"
+import {
+  Wallet,
+  Landmark,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  History,
+  ArrowLeftRight,
+  Trash2,
+} from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -18,10 +29,31 @@ import {
 } from "recharts"
 import { useComputed } from "@/hooks/use-computed"
 import { useStore } from "@/lib/store"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
+import { parseAmount } from "@/lib/csv"
+import { monthKey, addMonthsToKey, monthsBetween, monthKeyLabel, firstDayOfMonth, lastDayOfMonth } from "@/lib/months"
+import { useToast } from "@/components/ui/use-toast"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -33,6 +65,53 @@ const CHART_COLORS = [
   "var(--chart-7)",
   "var(--chart-8)",
 ]
+
+// ── Period filter ──
+
+type PeriodPreset = "this_month" | "last_month" | "this_year" | "last_year" | "all" | "custom"
+
+const PERIOD_OPTIONS: { value: PeriodPreset; label: string }[] = [
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "this_year", label: "This Year" },
+  { value: "last_year", label: "Last Year" },
+  { value: "all", label: "All Time" },
+  { value: "custom", label: "Custom Range" },
+]
+
+// inclusive 'YYYY-MM-DD' bounds; null = unbounded
+function resolveRange(
+  period: PeriodPreset,
+  customStart: string,
+  customEnd: string
+): { start: string | null; end: string | null } {
+  const now = new Date()
+  const y = now.getFullYear()
+  const nowKey = monthKey(now)
+  switch (period) {
+    case "this_month":
+      return { start: firstDayOfMonth(nowKey), end: lastDayOfMonth(nowKey) }
+    case "last_month": {
+      const prev = addMonthsToKey(nowKey, -1)
+      return { start: firstDayOfMonth(prev), end: lastDayOfMonth(prev) }
+    }
+    case "this_year":
+      return { start: `${y}-01-01`, end: `${y}-12-31` }
+    case "last_year":
+      return { start: `${y - 1}-01-01`, end: `${y - 1}-12-31` }
+    case "all":
+      return { start: null, end: null }
+    case "custom":
+      return { start: customStart || null, end: customEnd || null }
+  }
+}
+
+function inRange(date: string, start: string | null, end: string | null): boolean {
+  if (!date) return false
+  if (start && date < start) return false
+  if (end && date > end) return false
+  return true
+}
 
 function DashboardSkeleton() {
   return (
@@ -94,28 +173,117 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { state } = useStore()
+  const { state, addTransfer, deleteTransfer } = useStore()
+  const { toast } = useToast()
   const {
     dashboardStats,
+    dashboardPayments,
     occupancyBreakdown,
     overdueAlerts,
-    monthlyIncomeExpenses,
-    expensesByCategory,
     runningBalance,
     budgetVsActual,
-    cashVsBankThisMonth,
   } = useComputed()
+
+  // ── Period filter state ──
+  const [period, setPeriod] = useState<PeriodPreset>("this_month")
+  const [customStart, setCustomStart] = useState("")
+  const [customEnd, setCustomEnd] = useState("")
+
+  // ── Transfer dialog state ──
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferDirection, setTransferDirection] = useState<"cash_to_bank" | "bank_to_cash">("cash_to_bank")
+  const [transferAmount, setTransferAmount] = useState("")
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [transferNotes, setTransferNotes] = useState("")
+
+  const range = resolveRange(period, customStart, customEnd)
+  const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? ""
+
+  // everything the selected period covers, derived from the same
+  // dashboard-visible payments the balance cards use
+  const periodStats = useMemo(() => {
+    const pays = dashboardPayments.filter((p) => inRange(p.date_paid, range.start, range.end))
+    const exps = state.expenses.filter((e) => inRange(e.date, range.start, range.end))
+
+    const collected = pays.reduce((s, p) => s + p.amount, 0)
+    const spent = exps.reduce((s, e) => s + e.amount, 0)
+    const cash = pays.filter((p) => p.method === "cash").reduce((s, p) => s + p.amount, 0)
+    const bank = pays.filter((p) => p.method === "bank").reduce((s, p) => s + p.amount, 0)
+
+    // expenses per category within the period
+    const byCategory = new Map<string, number>()
+    for (const e of exps) {
+      const name = state.categories.find((c) => c.id === e.category_id)?.name ?? "other"
+      const display = name.charAt(0).toUpperCase() + name.slice(1)
+      byCategory.set(display, (byCategory.get(display) ?? 0) + e.amount)
+    }
+
+    // month keys the bar chart shows: the period's months (capped at
+    // 24), or the last 12 months for open-ended ranges
+    let startKey: string
+    let endKey: string
+    if (range.start && range.end) {
+      startKey = monthKey(range.start)
+      endKey = monthKey(range.end)
+      if (monthsBetween(startKey, endKey) > 23) startKey = addMonthsToKey(endKey, -23)
+    } else {
+      endKey = monthKey(new Date())
+      startKey = addMonthsToKey(endKey, -11)
+    }
+    const monthly: Array<{ month: string; income: number; expenses: number }> = []
+    for (let k = startKey; k <= endKey; k = addMonthsToKey(k, 1)) {
+      const income = pays
+        .filter((p) => monthKey(p.date_paid) === k)
+        .reduce((s, p) => s + p.amount, 0)
+      const expTotal = exps
+        .filter((e) => monthKey(e.date) === k)
+        .reduce((s, e) => s + e.amount, 0)
+      monthly.push({ month: monthKeyLabel(k), income, expenses: expTotal })
+    }
+
+    return {
+      collected,
+      spent,
+      cash,
+      bank,
+      expensesByCategory: Array.from(byCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount),
+      monthly,
+    }
+  }, [dashboardPayments, state.expenses, state.categories, range.start, range.end])
 
   if (!state.loaded) {
     return <DashboardSkeleton />
   }
 
-  // this-month range for the "Spent This Month" card link
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, "0")
-  const monthStart = `${y}-${m}-01`
-  const monthEnd = `${y}-${m}-${String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`
+  function handleTransfer() {
+    const amount = parseAmount(transferAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: "Enter a valid amount", description: "The transfer amount must be greater than zero.", variant: "destructive" })
+      return
+    }
+    if (!transferDate) {
+      toast({ title: "Pick a date", description: "The transfer needs a date.", variant: "destructive" })
+      return
+    }
+    const fromMethod = transferDirection === "cash_to_bank" ? "cash" : "bank"
+    const toMethod = transferDirection === "cash_to_bank" ? "bank" : "cash"
+    addTransfer({
+      amount,
+      from_method: fromMethod,
+      to_method: toMethod,
+      date: transferDate,
+      notes: transferNotes,
+    })
+    toast({
+      title: "Transfer recorded",
+      description: `${formatCurrency(amount)} moved from ${fromMethod} to ${toMethod}.`,
+      variant: "success",
+    })
+    setTransferAmount("")
+    setTransferNotes("")
+  }
 
   // each card links to the page (with filters preset) that explains its number
   const kpiCards = [
@@ -144,20 +312,20 @@ export default function DashboardPage() {
       href: "/apartments",
     },
     {
-      label: "Collected This Month",
-      value: dashboardStats.collected_this_month,
+      label: `Collected — ${periodLabel}`,
+      value: periodStats.collected,
       icon: TrendingUp,
       color: "text-green-600 dark:text-green-400",
       bg: "bg-green-50 dark:bg-green-950",
       href: "/apartments",
     },
     {
-      label: "Spent This Month",
-      value: dashboardStats.spent_this_month,
+      label: `Spent — ${periodLabel}`,
+      value: periodStats.spent,
       icon: TrendingDown,
       color: "text-red-600 dark:text-red-400",
       bg: "bg-red-50 dark:bg-red-950",
-      href: `/expenses?start=${monthStart}&end=${monthEnd}`,
+      href: `/expenses${range.start || range.end ? `?start=${range.start ?? ""}&end=${range.end ?? ""}` : ""}`,
     },
   ]
 
@@ -179,21 +347,63 @@ export default function DashboardPage() {
   const expPercent = Math.min(Math.round((expActual / expExpected) * 100), 100)
   const expOver = expActual > expExpected
 
-  const cashBankTotal = cashVsBankThisMonth.cash + cashVsBankThisMonth.bank
-  const cashPct = cashBankTotal > 0 ? Math.round((cashVsBankThisMonth.cash / cashBankTotal) * 100) : 0
+  const cashBankTotal = periodStats.cash + periodStats.bank
+  const cashPct = cashBankTotal > 0 ? Math.round((periodStats.cash / cashBankTotal) * 100) : 0
   const bankPct = cashBankTotal > 0 ? 100 - cashPct : 0
 
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          {state.settings.building_name
-            ? `${state.settings.building_name} — finance overview`
-            : "Building finance overview"}
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            {state.settings.building_name
+              ? `${state.settings.building_name} — finance overview`
+              : "Building finance overview"}
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setTransferOpen(true)}>
+          <ArrowLeftRight className="mr-1 h-4 w-4" /> Transfer Cash ↔ Bank
+        </Button>
       </div>
+
+      {/* Period filter — drives the Collected/Spent cards and the charts */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-[180px]">
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Period</Label>
+              <Select value={period} onValueChange={(v) => setPeriod(v as PeriodPreset)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PERIOD_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {period === "custom" && (
+              <>
+                <div className="min-w-0">
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">From</Label>
+                  <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
+                </div>
+                <div className="min-w-0">
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">To</Label>
+                  <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+                </div>
+              </>
+            )}
+            <p className="text-xs text-muted-foreground pb-2">
+              {range.start || range.end
+                ? `Showing ${range.start ? formatDate(range.start) : "the beginning"} – ${range.end ? formatDate(range.end) : "today"}`
+                : "Showing all recorded data"}
+              . Balance cards always show current totals.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 1. KPI Cards — each links to the relevant page, filters preset */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -318,12 +528,12 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Monthly Income vs Expenses</CardTitle>
-            <CardDescription>Last 12 months comparison</CardDescription>
+            <CardDescription>{periodLabel} — month by month</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyIncomeExpenses} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <BarChart data={periodStats.monthly} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis
                     dataKey="month"
@@ -353,15 +563,15 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Expenses by Category</CardTitle>
-            <CardDescription>Year-to-date breakdown</CardDescription>
+            <CardDescription>{periodLabel} breakdown</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72 flex items-center">
-              {expensesByCategory.length > 0 ? (
+              {periodStats.expensesByCategory.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={expensesByCategory}
+                      data={periodStats.expensesByCategory}
                       dataKey="amount"
                       nameKey="category"
                       cx="50%"
@@ -373,7 +583,7 @@ export default function DashboardPage() {
                         `${name || ''} ${((percent ?? 0) * 100).toFixed(0)}%`
                       }
                     >
-                      {expensesByCategory.map((_, index) => (
+                      {periodStats.expensesByCategory.map((_, index) => (
                         <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                     </Pie>
@@ -389,7 +599,7 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="w-full text-center text-muted-foreground">No expense data</p>
+                <p className="w-full text-center text-muted-foreground">No expenses in this period</p>
               )}
             </div>
           </CardContent>
@@ -399,7 +609,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Running Balance</CardTitle>
-            <CardDescription>Cumulative balance over time</CardDescription>
+            <CardDescription>Cumulative balance over time (all data)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -453,10 +663,10 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Cash vs Bank This Month */}
+        {/* Cash vs Bank in the selected period */}
         <Card>
           <CardHeader>
-            <CardTitle>Cash vs Bank (This Month)</CardTitle>
+            <CardTitle>Cash vs Bank — {periodLabel}</CardTitle>
             <CardDescription>
               Collection method breakdown: {formatCurrency(cashBankTotal)} total
             </CardDescription>
@@ -490,7 +700,7 @@ export default function DashboardPage() {
                     />
                     <span className="text-sm text-muted-foreground">Cash</span>
                     <span className="text-sm font-semibold">
-                      {formatCurrency(cashVsBankThisMonth.cash)}
+                      {formatCurrency(periodStats.cash)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -500,13 +710,13 @@ export default function DashboardPage() {
                     />
                     <span className="text-sm text-muted-foreground">Bank</span>
                     <span className="text-sm font-semibold">
-                      {formatCurrency(cashVsBankThisMonth.bank)}
+                      {formatCurrency(periodStats.bank)}
                     </span>
                   </div>
                 </div>
               </>
             ) : (
-              <p className="py-8 text-center text-muted-foreground">No collections this month</p>
+              <p className="py-8 text-center text-muted-foreground">No collections in this period</p>
             )}
           </CardContent>
         </Card>
@@ -521,7 +731,8 @@ export default function DashboardPage() {
               <CardTitle>Previous Years</CardTitle>
             </div>
             <CardDescription>
-              Migrated yearly totals — edit them in Building Setup
+              Migrated yearly totals — edit them in Building Setup. Years with a
+              cash/bank split carry into the balance cards above.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -533,12 +744,16 @@ export default function DashboardPage() {
                     <th className="pb-3 pr-4 font-medium">Income</th>
                     <th className="pb-3 pr-4 font-medium">Expenditure</th>
                     <th className="pb-3 pr-4 font-medium">Net</th>
+                    <th className="pb-3 pr-4 font-medium">Carried to Balance</th>
                     <th className="pb-3 font-medium">Expenditure Breakdown</th>
                   </tr>
                 </thead>
                 <tbody>
                   {state.history.map((h) => {
                     const net = h.income - h.expenditure
+                    const carriedCash = (h.income_cash ?? 0) - (h.expenditure_cash ?? 0)
+                    const carriedBank = (h.income_bank ?? 0) - (h.expenditure_bank ?? 0)
+                    const hasCarry = carriedCash !== 0 || carriedBank !== 0
                     const breakdown = Object.entries(h.expense_breakdown).sort((a, b) => b[1] - a[1])
                     return (
                       <tr key={h.id} className="border-b last:border-0">
@@ -547,6 +762,15 @@ export default function DashboardPage() {
                         <td className="py-3 pr-4">{formatCurrency(h.expenditure)}</td>
                         <td className={`py-3 pr-4 font-medium ${net < 0 ? "text-destructive" : "text-green-600 dark:text-green-400"}`}>
                           {formatCurrency(net)}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {hasCarry ? (
+                            <span className="whitespace-nowrap">
+                              {formatCurrency(carriedCash)} cash · {formatCurrency(carriedBank)} bank
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="py-3">
                           {breakdown.length === 0 ? (
@@ -641,6 +865,93 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Transfer dialog */}
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Transfer Between Cash and Bank</DialogTitle>
+            <DialogDescription>
+              Move money between the cash box and the bank account — the
+              balance cards update immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Direction</Label>
+                <Select
+                  value={transferDirection}
+                  onValueChange={(v) => setTransferDirection(v as "cash_to_bank" | "bank_to_cash")}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash_to_bank">Cash → Bank (deposit)</SelectItem>
+                    <SelectItem value="bank_to_cash">Bank → Cash (withdrawal)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount (LE)</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Input
+                placeholder="e.g. monthly bank deposit"
+                value={transferNotes}
+                onChange={(e) => setTransferNotes(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Current: {formatCurrency(dashboardStats.cash_on_hand)} cash ·{" "}
+              {formatCurrency(dashboardStats.bank_balance)} bank
+            </p>
+
+            {state.transfers.length > 0 && (
+              <div className="space-y-1.5 border-t border-border pt-3">
+                <p className="text-sm font-medium">Recent transfers</p>
+                {state.transfers.slice(0, 6).map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground whitespace-nowrap">{formatDate(t.date)}</span>
+                    <span className="font-medium whitespace-nowrap">{formatCurrency(t.amount)}</span>
+                    <span className="text-muted-foreground truncate">
+                      {t.from_method} → {t.to_method}
+                      {t.notes ? ` · ${t.notes}` : ""}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto h-7 w-7 shrink-0"
+                      onClick={() => deleteTransfer(t.id)}
+                      aria-label="Delete transfer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>Close</Button>
+            <Button onClick={handleTransfer}>
+              <ArrowLeftRight className="mr-1 h-4 w-4" /> Record Transfer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

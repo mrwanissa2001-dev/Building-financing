@@ -52,6 +52,7 @@ import {
   Repeat,
   ChevronLeft,
   ChevronRight,
+  ClipboardCopy,
 } from "lucide-react"
 
 type SortField = "date" | "amount"
@@ -197,6 +198,8 @@ function ExpensesContent() {
   // Its start month is the earliest recurring entry (edit that entry's
   // date to shift the whole schedule) and its interval comes from the
   // latest entry, so switching an expense to quarterly reshapes the row.
+  // Built from the filtered expenses, so the page filters shape the
+  // grid too.
   const recurringSeries = useMemo(() => {
     const byKey = new Map<
       string,
@@ -208,11 +211,12 @@ function ExpensesContent() {
         latestDate: string
         amount: number
         paidMonths: Set<string>
+        methodByMonth: Map<string, "C" | "B" | "C/B">
         totalByYear: Map<number, number>
       }
     >()
 
-    for (const e of state.expenses) {
+    for (const e of filteredExpenses) {
       if (!e.recurring) continue
       const key = `${e.category_id}|${e.vendor.trim().toLowerCase()}`
       const mk = monthKey(e.date)
@@ -226,6 +230,7 @@ function ExpensesContent() {
           latestDate: e.date,
           amount: e.amount,
           paidMonths: new Set(),
+          methodByMonth: new Map(),
           totalByYear: new Map(),
         }
         byKey.set(key, s)
@@ -238,6 +243,9 @@ function ExpensesContent() {
         s.vendor = e.vendor
       }
       s.paidMonths.add(mk)
+      const letter = e.method === "bank" ? "B" : "C"
+      const prev = s.methodByMonth.get(mk)
+      s.methodByMonth.set(mk, prev && prev !== letter ? "C/B" : letter)
       const y = Number(mk.slice(0, 4))
       s.totalByYear.set(y, (s.totalByYear.get(y) ?? 0) + e.amount)
     }
@@ -248,7 +256,7 @@ function ExpensesContent() {
     return Array.from(byKey.values())
       .map((s) => ({ ...s, categoryName: catName(s.categoryId) }))
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.vendor.localeCompare(b.vendor))
-  }, [state.expenses, state.categories])
+  }, [filteredExpenses, state.categories])
 
   function recurringCell(
     series: { startKey: string; interval: number; paidMonths: Set<string> },
@@ -313,7 +321,21 @@ function ExpensesContent() {
     e.preventDefault()
 
     const parsedAmount = parseAmount(form.amount)
-    if (!form.category_id || isNaN(parsedAmount) || parsedAmount <= 0 || !form.date || !form.vendor) {
+    // say exactly what's missing instead of silently doing nothing
+    if (!form.category_id) {
+      toast({ title: "Select a category", description: "The expense needs a category.", variant: "destructive" })
+      return
+    }
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: "Enter a valid amount", description: "The amount must be a number greater than zero.", variant: "destructive" })
+      return
+    }
+    if (!form.date) {
+      toast({ title: "Pick a date", description: "The expense date is required.", variant: "destructive" })
+      return
+    }
+    if (!form.vendor) {
+      toast({ title: "Enter a vendor", description: "Say who was paid — pick a person or type a name.", variant: "destructive" })
       return
     }
 
@@ -371,6 +393,39 @@ function ExpensesContent() {
     downloadCsv(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
   }
 
+  // the exact instructions to hand an AI (or a colleague) so any raw
+  // data comes back as a CSV this page imports cleanly
+  const EXPENSES_CSV_PROMPT = `Convert my expense records into a CSV file with EXACTLY this header row (lowercase, comma-separated, in this order):
+
+category,amount,method,date,vendor,recurring,recurring_interval,notes
+
+Rules for each column:
+- category: the expense category name, e.g. maintenance, water, electricity, internet, security, cleaning, extras, other (required)
+- amount: a plain number, no currency symbol or thousands separators (e.g. 350) (required)
+- method: cash or bank
+- date: the day it was paid, formatted YYYY-MM-DD (e.g. 2026-07-03) (required)
+- vendor: who was paid (person or company)
+- recurring: yes if this expense repeats on a schedule, otherwise leave empty
+- recurring_interval: months between repeats when recurring (1 = monthly, 3 = quarterly, 12 = yearly); leave empty when not recurring
+- notes: free text, or empty
+
+Wrap any value containing a comma in double quotes. Output only the CSV content, no explanations, no markdown code fences.`
+
+  function copyExpensesCsvPrompt() {
+    navigator.clipboard
+      .writeText(EXPENSES_CSV_PROMPT)
+      .then(() =>
+        toast({
+          title: "Prompt copied",
+          description: "Paste it to an AI with your raw data to get an import-ready CSV.",
+          variant: "success",
+        })
+      )
+      .catch(() =>
+        toast({ title: "Copy failed", description: "Your browser blocked clipboard access.", variant: "destructive" })
+      )
+  }
+
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -384,6 +439,8 @@ function ExpensesContent() {
         method: PaymentMethod
         date: string
         vendor: string
+        recurring: boolean
+        recurring_interval: number
         notes: string
       }[] = []
       for (const o of objs) {
@@ -396,6 +453,8 @@ function ExpensesContent() {
           method: (o.method || "").toLowerCase() === "bank" ? "bank" : "cash",
           date,
           vendor: o.vendor || "",
+          recurring: ["yes", "true", "1"].includes((o.recurring || "").toLowerCase()),
+          recurring_interval: Math.max(1, parseInt(o.recurring_interval || "1", 10) || 1),
           notes: o.notes || "",
         })
       }
@@ -440,6 +499,10 @@ function ExpensesContent() {
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4" />
             Import CSV
+          </Button>
+          <Button variant="outline" onClick={copyExpensesCsvPrompt} title="Copy an AI prompt that converts your raw data into an import-ready CSV">
+            <ClipboardCopy className="h-4 w-4" />
+            Copy CSV Prompt
           </Button>
           <input
             ref={fileInputRef}
@@ -542,9 +605,10 @@ function ExpensesContent() {
               <Repeat className="h-4 w-4" /> Recurring Expenses
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              One row per recurring expense. Non-monthly schedules skip the
-              months in between — edit the first entry&apos;s date to shift the
-              starting month.
+              One row per recurring expense — it follows the filters above.
+              Non-monthly schedules skip the months in between; edit the first
+              entry&apos;s date to shift the starting month. C = paid in cash,
+              B = by bank.
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -589,12 +653,15 @@ function ExpensesContent() {
                       {Array.from({ length: 12 }, (_, i) => {
                         const key = `${gridYear}-${String(i + 1).padStart(2, "0")}`
                         const status = recurringCell(s, key)
+                        const letter = status === "paid" ? s.methodByMonth.get(key) : undefined
                         return (
                           <TableCell key={i} className="px-1 py-2 text-center">
                             <div
-                              className={cn("mx-auto h-5 w-7 rounded-sm", recurringCellClass(status))}
-                              title={`${s.categoryName} (${s.vendor}) — ${MONTH_LABELS[i]} ${gridYear}: ${recurringCellTitle(status)}`}
-                            />
+                              className={cn("mx-auto flex h-5 w-7 items-center justify-center rounded-sm text-[9px] font-bold text-white", recurringCellClass(status))}
+                              title={`${s.categoryName} (${s.vendor}) — ${MONTH_LABELS[i]} ${gridYear}: ${recurringCellTitle(status)}${letter ? ` (${letter === "C/B" ? "cash + bank" : letter === "C" ? "cash" : "bank"})` : ""}`}
+                            >
+                              {letter ?? ""}
+                            </div>
                           </TableCell>
                         )
                       })}

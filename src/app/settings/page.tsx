@@ -66,6 +66,11 @@ export default function SettingsPage() {
   const [histYear, setHistYear] = useState("")
   const [histIncome, setHistIncome] = useState("")
   const [histExpenditure, setHistExpenditure] = useState("")
+  // optional cash/bank splits — they carry the year into the dashboard balances
+  const [histIncomeCash, setHistIncomeCash] = useState("")
+  const [histIncomeBank, setHistIncomeBank] = useState("")
+  const [histExpCash, setHistExpCash] = useState("")
+  const [histExpBank, setHistExpBank] = useState("")
   const [editingHistId, setEditingHistId] = useState<string | null>(null)
   // breakdown editor state: which year row is expanded + its percents
   const [breakdownHistId, setBreakdownHistId] = useState<string | null>(null)
@@ -158,6 +163,10 @@ export default function SettingsPage() {
     setHistYear(String(h.year))
     setHistIncome(String(h.income))
     setHistExpenditure(String(h.expenditure))
+    setHistIncomeCash(h.income_cash ? String(h.income_cash) : "")
+    setHistIncomeBank(h.income_bank ? String(h.income_bank) : "")
+    setHistExpCash(h.expenditure_cash ? String(h.expenditure_cash) : "")
+    setHistExpBank(h.expenditure_bank ? String(h.expenditure_bank) : "")
   }
 
   function resetHistoryForm() {
@@ -165,6 +174,10 @@ export default function SettingsPage() {
     setHistYear("")
     setHistIncome("")
     setHistExpenditure("")
+    setHistIncomeCash("")
+    setHistIncomeBank("")
+    setHistExpCash("")
+    setHistExpBank("")
   }
 
   function handleSubmitHistory() {
@@ -185,11 +198,18 @@ export default function SettingsPage() {
       toast({ title: "Year already exists", description: `Edit the existing ${year} row instead.`, variant: "destructive" })
       return
     }
+    // splits are optional; blank = 0 = the year does not touch the balances
+    const splits = {
+      income_cash: parseAmount(histIncomeCash) || 0,
+      income_bank: parseAmount(histIncomeBank) || 0,
+      expenditure_cash: parseAmount(histExpCash) || 0,
+      expenditure_bank: parseAmount(histExpBank) || 0,
+    }
     if (editingHistId) {
       const existing = state.history.find((h) => h.id === editingHistId)
-      if (existing) updateHistory({ ...existing, year, income, expenditure })
+      if (existing) updateHistory({ ...existing, year, income, expenditure, ...splits })
     } else {
-      addHistory({ year, income, expenditure, expense_breakdown: {} })
+      addHistory({ year, income, expenditure, ...splits, expense_breakdown: {} })
     }
     resetHistoryForm()
   }
@@ -655,6 +675,73 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+
+            {/* Optional cash/bank split → carries the year into the dashboard balances */}
+            <div className="rounded-md bg-muted/40 p-3 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Optional: split the totals between cash and bank to add this
+                year&apos;s money to the dashboard&apos;s Cash on Hand and Bank
+                Balance. Leave blank to keep the year as record-only.
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="space-y-1">
+                  <Label htmlFor="hist-income-cash" className="text-xs">Income — Cash</Label>
+                  <Input
+                    id="hist-income-cash"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={histIncomeCash}
+                    onChange={(e) => setHistIncomeCash(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="hist-income-bank" className="text-xs">Income — Bank</Label>
+                  <Input
+                    id="hist-income-bank"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={histIncomeBank}
+                    onChange={(e) => setHistIncomeBank(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="hist-exp-cash" className="text-xs">Expenditure — Cash</Label>
+                  <Input
+                    id="hist-exp-cash"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={histExpCash}
+                    onChange={(e) => setHistExpCash(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="hist-exp-bank" className="text-xs">Expenditure — Bank</Label>
+                  <Input
+                    id="hist-exp-bank"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={histExpBank}
+                    onChange={(e) => setHistExpBank(e.target.value)}
+                  />
+                </div>
+              </div>
+              {(() => {
+                const carriedCash = (parseAmount(histIncomeCash) || 0) - (parseAmount(histExpCash) || 0)
+                const carriedBank = (parseAmount(histIncomeBank) || 0) - (parseAmount(histExpBank) || 0)
+                if (carriedCash === 0 && carriedBank === 0) return null
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Carries {formatCurrency(carriedCash)} to cash and{" "}
+                    {formatCurrency(carriedBank)} to bank on the dashboard.
+                  </p>
+                )
+              })()}
+            </div>
+
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSubmitHistory}>
                 {editingHistId ? "Save Year" : <><Plus className="mr-1 h-3.5 w-3.5" /> Add Year</>}

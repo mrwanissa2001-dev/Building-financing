@@ -30,7 +30,10 @@ export interface Apartment {
 
 // period_start/period_end carry the covered months: period_start is the
 // first day of the first covered month, period_end the last day of the
-// last covered month
+// last covered month.
+// extra marks money that does not advance the month coverage (e.g. a
+// resident settling last year's dues); on_dashboard = false keeps a
+// payment out of every dashboard number.
 export interface Payment {
   id: string
   apartment_id: string
@@ -42,6 +45,19 @@ export interface Payment {
   period_start: string
   period_end: string
   recurring: boolean
+  extra: boolean
+  on_dashboard: boolean
+  notes: string
+  created_at: string
+}
+
+// Money moved between the cash box and the bank account
+export interface Transfer {
+  id: string
+  amount: number
+  from_method: PaymentMethod
+  to_method: PaymentMethod
+  date: string
   notes: string
   created_at: string
 }
@@ -76,12 +92,18 @@ export interface CategoryPerson {
 }
 
 // One migrated prior year: totals only, with an optional percentage
-// breakdown of the expenditure keyed by category name
+// breakdown of the expenditure keyed by category name. The cash/bank
+// splits are optional; when set they carry the year's money into the
+// dashboard's Cash on Hand / Bank Balance.
 export interface YearlyHistory {
   id: string
   year: number
   income: number
   expenditure: number
+  income_cash: number
+  income_bank: number
+  expenditure_cash: number
+  expenditure_bank: number
   expense_breakdown: Record<string, number>
 }
 

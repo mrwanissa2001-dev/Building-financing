@@ -1,7 +1,7 @@
-import { startOfMonth, endOfMonth, isAfter, isBefore } from 'date-fns'
 import {
   monthKey,
   monthKeyOrNull,
+  currentMonthKey,
   addMonthsToKey,
   monthsBetween,
   firstDayOfMonth,
@@ -10,6 +10,8 @@ import type {
   Apartment,
   Payment,
   Expense,
+  Transfer,
+  YearlyHistory,
   PaymentStatus,
   OccupancyBreakdown,
 } from './types'
@@ -40,9 +42,12 @@ export interface ApartmentCoverage {
 
 export function computeCoverage(
   apartment: Apartment,
-  payments: Payment[],
+  allPayments: Payment[],
   now: Date = new Date()
 ): ApartmentCoverage {
+  // extra payments (settling old, untracked dues) never advance the
+  // month coverage
+  const payments = allPayments.filter((p) => !p.extra)
   const due = apartment.monthly_due_amount
   const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
 
@@ -127,65 +132,73 @@ export function computeMonthCell(
   return 'future'
 }
 
-export function computeCashOnHand(
+// Cash and bank balances: everything received minus everything spent
+// per method, moved by transfers, plus what migrated prior years carry
+// in via their cash/bank splits
+export function computeBalance(
+  method: 'cash' | 'bank',
   payments: Payment[],
-  expenses: Expense[]
+  expenses: Expense[],
+  transfers: Transfer[] = [],
+  history: YearlyHistory[] = []
 ): number {
-  const cashIn = payments
-    .filter((p) => p.method === 'cash')
+  const moneyIn = payments
+    .filter((p) => p.method === method)
     .reduce((sum, p) => sum + p.amount, 0)
 
-  const cashOut = expenses
-    .filter((e) => e.method === 'cash')
+  const moneyOut = expenses
+    .filter((e) => e.method === method)
     .reduce((sum, e) => sum + e.amount, 0)
 
-  return cashIn - cashOut
+  const transferred = transfers.reduce((sum, t) => {
+    if (t.to_method === method && t.from_method !== method) return sum + t.amount
+    if (t.from_method === method && t.to_method !== method) return sum - t.amount
+    return sum
+  }, 0)
+
+  const carried = history.reduce(
+    (sum, h) =>
+      method === 'cash'
+        ? sum + (h.income_cash ?? 0) - (h.expenditure_cash ?? 0)
+        : sum + (h.income_bank ?? 0) - (h.expenditure_bank ?? 0),
+    0
+  )
+
+  return moneyIn - moneyOut + transferred + carried
+}
+
+export function computeCashOnHand(
+  payments: Payment[],
+  expenses: Expense[],
+  transfers: Transfer[] = [],
+  history: YearlyHistory[] = []
+): number {
+  return computeBalance('cash', payments, expenses, transfers, history)
 }
 
 export function computeBankBalance(
   payments: Payment[],
-  expenses: Expense[]
+  expenses: Expense[],
+  transfers: Transfer[] = [],
+  history: YearlyHistory[] = []
 ): number {
-  const bankIn = payments
-    .filter((p) => p.method === 'bank')
-    .reduce((sum, p) => sum + p.amount, 0)
-
-  const bankOut = expenses
-    .filter((e) => e.method === 'bank')
-    .reduce((sum, e) => sum + e.amount, 0)
-
-  return bankIn - bankOut
+  return computeBalance('bank', payments, expenses, transfers, history)
 }
 
+// month checks compare the date strings directly ('YYYY-MM-DD') so a
+// payment logged on the 1st never slips into the previous month through
+// timezone conversion
 export function computeCollectedThisMonth(payments: Payment[]): number {
-  const now = new Date()
-  const monthStart = startOfMonth(now)
-  const monthEnd = endOfMonth(now)
-
+  const nowKey = currentMonthKey()
   return payments
-    .filter((p) => {
-      const datePaid = new Date(p.date_paid)
-      return (
-        (isAfter(datePaid, monthStart) || datePaid.getTime() === monthStart.getTime()) &&
-        (isBefore(datePaid, monthEnd) || datePaid.getTime() === monthEnd.getTime())
-      )
-    })
+    .filter((p) => monthKeyOrNull(p.date_paid) === nowKey)
     .reduce((sum, p) => sum + p.amount, 0)
 }
 
 export function computeSpentThisMonth(expenses: Expense[]): number {
-  const now = new Date()
-  const monthStart = startOfMonth(now)
-  const monthEnd = endOfMonth(now)
-
+  const nowKey = currentMonthKey()
   return expenses
-    .filter((e) => {
-      const expenseDate = new Date(e.date)
-      return (
-        (isAfter(expenseDate, monthStart) || expenseDate.getTime() === monthStart.getTime()) &&
-        (isBefore(expenseDate, monthEnd) || expenseDate.getTime() === monthEnd.getTime())
-      )
-    })
+    .filter((e) => monthKeyOrNull(e.date) === nowKey)
     .reduce((sum, e) => sum + e.amount, 0)
 }
 
