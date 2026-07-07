@@ -14,6 +14,7 @@ import type {
   ExpenseCategory,
   CategoryPerson,
   YearlyHistory,
+  Transfer,
   BuildingSettings,
   PaymentMethod,
 } from './types'
@@ -36,6 +37,8 @@ import {
   insertHistory as sbInsertHistory,
   updateHistoryRow as sbUpdateHistory,
   deleteHistoryRow as sbDeleteHistory,
+  insertTransfer as sbInsertTransfer,
+  deleteTransferRow as sbDeleteTransfer,
   updateSettingsRow as sbUpdateSettings,
 } from './supabase-data'
 import {
@@ -56,6 +59,7 @@ interface StoreState {
   categories: ExpenseCategory[]
   people: CategoryPerson[]
   history: YearlyHistory[]
+  transfers: Transfer[]
   settings: BuildingSettings
   initialized: boolean
   loaded: boolean
@@ -68,6 +72,7 @@ const INITIAL_STATE: StoreState = {
   categories: [],
   people: [],
   history: [],
+  transfers: [],
   settings: DEFAULT_SETTINGS,
   initialized: false,
   loaded: false,
@@ -93,6 +98,8 @@ type StoreAction =
   | { type: 'ADD_HISTORY'; payload: YearlyHistory }
   | { type: 'UPDATE_HISTORY'; payload: YearlyHistory }
   | { type: 'DELETE_HISTORY'; payload: string }
+  | { type: 'ADD_TRANSFER'; payload: Transfer }
+  | { type: 'DELETE_TRANSFER'; payload: string }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
 
 // ── Reducer ──
@@ -196,6 +203,18 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
         history: state.history.filter((h) => h.id !== action.payload),
       }
 
+    case 'ADD_TRANSFER':
+      return {
+        ...state,
+        transfers: [action.payload, ...state.transfers],
+      }
+
+    case 'DELETE_TRANSFER':
+      return {
+        ...state,
+        transfers: state.transfers.filter((t) => t.id !== action.payload),
+      }
+
     case 'UPDATE_SETTINGS':
       return {
         ...state,
@@ -257,6 +276,8 @@ interface StoreContextValue {
   addHistory: (data: Omit<YearlyHistory, 'id'>) => YearlyHistory
   updateHistory: (row: YearlyHistory) => void
   deleteHistory: (id: string) => void
+  addTransfer: (data: Omit<Transfer, 'id' | 'created_at'>) => Transfer
+  deleteTransfer: (id: string) => void
   updateSettings: (data: Partial<BuildingSettings>) => void
 
   importPayments: (rows: Omit<Payment, 'id' | 'created_at'>[]) => number
@@ -267,6 +288,8 @@ interface StoreContextValue {
       method: PaymentMethod
       date: string
       vendor: string
+      recurring: boolean
+      recurring_interval: number
       notes: string
     }[]
   ) => Promise<number>
@@ -285,7 +308,8 @@ function buildRecurringPayments(payments: Payment[]): Omit<Payment, 'id' | 'crea
 
   const latestByApartment = new Map<string, Payment>()
   for (const p of payments) {
-    if (!p.recurring) continue
+    // extra payments are one-off by nature — never extend them
+    if (!p.recurring || p.extra) continue
     const prev = latestByApartment.get(p.apartment_id)
     if (!prev || p.period_start > prev.period_start) latestByApartment.set(p.apartment_id, p)
   }
@@ -308,6 +332,8 @@ function buildRecurringPayments(payments: Payment[]): Omit<Payment, 'id' | 'crea
         period_start: firstDayOfMonth(from),
         period_end: lastDayOfMonth(to),
         recurring: true,
+        extra: false,
+        on_dashboard: latest.on_dashboard ?? true,
         notes: '(auto recurring)',
       })
       from = addMonthsToKey(from, span)
@@ -370,6 +396,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             categories: data.categories,
             people: data.people,
             history: data.history,
+            transfers: data.transfers,
             settings: data.settings,
             initialized: true,
             loaded: true,
@@ -613,6 +640,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_HISTORY', payload: id })
     sbDeleteHistory(id)
   }, [])
+  const addTransfer = useCallback((data: Omit<Transfer, 'id' | 'created_at'>): Transfer => {
+    const t: Transfer = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+    dispatch({ type: 'ADD_TRANSFER', payload: t })
+    sbInsertTransfer({ ...data, id: t.id })
+    return t
+  }, [])
+  const deleteTransfer = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_TRANSFER', payload: id })
+    sbDeleteTransfer(id)
+  }, [])
   const updateSettings = useCallback((data: Partial<BuildingSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: data })
     sbUpdateSettings(data)
@@ -640,6 +677,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         method: PaymentMethod
         date: string
         vendor: string
+        recurring: boolean
+        recurring_interval: number
         notes: string
       }[]
     ): Promise<number> => {
@@ -670,8 +709,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           method: r.method,
           date: r.date,
           vendor: r.vendor,
-          recurring: false,
-          recurring_interval: 1,
+          recurring: r.recurring,
+          recurring_interval: Math.max(1, r.recurring_interval || 1),
           notes: r.notes,
         }
         const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
@@ -707,6 +746,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addHistory,
     updateHistory,
     deleteHistory,
+    addTransfer,
+    deleteTransfer,
     updateSettings,
     importPayments,
     importExpenses,

@@ -71,6 +71,7 @@ import {
   Upload,
   Users,
   RotateCcw,
+  ClipboardCopy,
 } from "lucide-react"
 
 type SortField = "unit_number" | "amount_owed"
@@ -137,8 +138,14 @@ const emptyPaymentForm = {
   from_month: currentMonthKey(),
   months_count: "1",
   recurring: false,
+  // extra = money not tied to months (e.g. settling last year's dues)
+  extra: false,
+  on_dashboard: true,
   notes: "",
 }
+
+// which method(s) paid a given month, shown as C/B letters in the grid
+type MonthMethod = "C" | "B" | "C/B"
 
 export default function ApartmentsPage() {
   return (
@@ -270,10 +277,11 @@ function ApartmentsContent() {
     return list
   }, [apartmentsWithStatus, search, filterStatus, filterOccupancy, filterFloor, filterBuilding, filterMethod, sortField, sortDir, state.payments])
 
-  // apartments in ascending unit order for the collection grid
+  // the collection grid follows the same search/filters as the summary
+  // table, in ascending unit order
   const gridApartments = useMemo(
-    () => [...apartmentsWithStatus].sort((a, b) => unitCompare(a.unit_number, b.unit_number)),
-    [apartmentsWithStatus]
+    () => [...filtered].sort((a, b) => unitCompare(a.unit_number, b.unit_number)),
+    [filtered]
   )
 
   // money collected per apartment within the grid year
@@ -286,6 +294,35 @@ function ApartmentsContent() {
     }
     return map
   }, [state.payments, gridYear])
+
+  // which method paid each month of each apartment — the C/B letter
+  // inside a paid grid cell (per what the payments claim to cover)
+  const methodByAptMonth = useMemo(() => {
+    const map = new Map<string, Map<string, MonthMethod>>()
+    for (const p of state.payments) {
+      if (p.extra) continue
+      const startK = monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid)
+      const endK = monthKeyOrNull(p.period_end) ?? startK
+      let months = map.get(p.apartment_id)
+      if (!months) {
+        months = new Map()
+        map.set(p.apartment_id, months)
+      }
+      const letter: MonthMethod = p.method === "bank" ? "B" : "C"
+      let k = startK
+      let guard = 0
+      while (k <= endK && guard < 36) {
+        const prev = months.get(k)
+        months.set(k, prev && prev !== letter ? "C/B" : letter)
+        k = addMonthsToKey(k, 1)
+        guard++
+      }
+    }
+    return map
+  }, [state.payments])
+
+  const monthMethodLetter = (apartmentId: string, key: string): MonthMethod | undefined =>
+    methodByAptMonth.get(apartmentId)?.get(key)
 
   // every payment entry, newest payment date first — the payment log
   const paymentLog = useMemo(() => {
@@ -323,7 +360,22 @@ function ApartmentsContent() {
 
   function handleAddApartment() {
     const due = parseAmount(aptForm.monthly_due_amount)
-    if (!aptForm.unit_number || !aptForm.primary_resident_name || isNaN(due)) return
+    if (!aptForm.unit_number || !aptForm.primary_resident_name || isNaN(due)) {
+      toast({
+        title: "Missing apartment details",
+        description: "Unit number, resident name, and a numeric monthly due are required.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (state.apartments.some((a) => a.unit_number.trim().toLowerCase() === aptForm.unit_number.trim().toLowerCase())) {
+      toast({
+        title: "Unit already exists",
+        description: `Unit ${aptForm.unit_number} is already registered — unit numbers must be unique.`,
+        variant: "destructive",
+      })
+      return
+    }
 
     // hard limits from the building setup — no mishaps
     const buildingNo = Math.max(1, parseInt(aptForm.building_no, 10) || 1)
@@ -409,6 +461,8 @@ function ApartmentsContent() {
       from_month: fromKey,
       months_count: String(Math.max(1, monthsBetween(fromKey, endKey) + 1)),
       recurring: p.recurring ?? false,
+      extra: p.extra ?? false,
+      on_dashboard: p.on_dashboard ?? true,
       notes: p.notes,
     })
     setPayDialogOpen(true)
@@ -417,9 +471,29 @@ function ApartmentsContent() {
   function handleSubmitPayment() {
     const amount = parseAmount(payForm.amount)
     const count = Math.max(1, parseInt(payForm.months_count) || 1)
-    if (!payForm.apartment_id || isNaN(amount) || !payForm.date_paid || !isValidMonthKey(payForm.from_month)) return
 
-    const endMonth = addMonthsToKey(payForm.from_month, count - 1)
+    // say exactly what's missing instead of silently doing nothing
+    if (!payForm.apartment_id) {
+      toast({ title: "Select an apartment", description: "The payment needs an apartment.", variant: "destructive" })
+      return
+    }
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: "Enter a valid amount", description: "The amount must be a number greater than zero.", variant: "destructive" })
+      return
+    }
+    if (!payForm.date_paid) {
+      toast({ title: "Pick a payment date", description: "The date paid is required.", variant: "destructive" })
+      return
+    }
+    if (!payForm.extra && !isValidMonthKey(payForm.from_month)) {
+      toast({ title: "Pick the first month paid", description: "Choose which month this payment covers, or switch on “Extra payment” for money not tied to months.", variant: "destructive" })
+      return
+    }
+
+    // extra payments aren't tied to months: pin the period to the
+    // payment date's month; the coverage engine skips them anyway
+    const fromMonth = payForm.extra ? monthKey(payForm.date_paid) : payForm.from_month
+    const endMonth = payForm.extra ? fromMonth : addMonthsToKey(payForm.from_month, count - 1)
     const fields = {
       apartment_id: payForm.apartment_id,
       payer_name: payForm.payer_name,
@@ -427,9 +501,11 @@ function ApartmentsContent() {
       amount,
       method: payForm.method,
       date_paid: payForm.date_paid,
-      period_start: firstDayOfMonth(payForm.from_month),
+      period_start: firstDayOfMonth(fromMonth),
       period_end: lastDayOfMonth(endMonth),
-      recurring: payForm.recurring,
+      recurring: payForm.extra ? false : payForm.recurring,
+      extra: payForm.extra,
+      on_dashboard: payForm.on_dashboard,
       notes: payForm.notes,
     }
 
@@ -465,7 +541,7 @@ function ApartmentsContent() {
 
   function exportPaymentsCsv() {
     const aptById = new Map(state.apartments.map((a) => [a.id, a]))
-    const headers = ["unit_number", "payer_name", "payer_relation", "amount", "method", "date_paid", "first_month", "last_month", "recurring", "notes"]
+    const headers = ["unit_number", "payer_name", "payer_relation", "amount", "method", "date_paid", "first_month", "last_month", "recurring", "extra", "on_dashboard", "notes"]
     const rows = state.payments.map((p) => [
       aptById.get(p.apartment_id)?.unit_number ?? "",
       p.payer_name,
@@ -476,9 +552,48 @@ function ApartmentsContent() {
       monthKeyOrNull(p.period_start) ?? "",
       monthKeyOrNull(p.period_end) ?? "",
       p.recurring ? "yes" : "",
+      p.extra ? "yes" : "",
+      p.on_dashboard === false ? "no" : "yes",
       p.notes,
     ])
     downloadCsv(`payments-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  // the exact instructions to hand an AI (or a colleague) so any raw
+  // data comes back as a CSV this page imports cleanly
+  const PAYMENTS_CSV_PROMPT = `Convert my payment records into a CSV file with EXACTLY this header row (lowercase, comma-separated, in this order):
+
+unit_number,payer_name,payer_relation,amount,method,date_paid,first_month,last_month,recurring,extra,on_dashboard,notes
+
+Rules for each column:
+- unit_number: the apartment's unit number exactly as registered in the app (required)
+- payer_name: who paid; leave empty to default to the resident
+- payer_relation: one of father, mother, sister, brother, son, daughter, friend, other — or empty
+- amount: a plain number, no currency symbol or thousands separators (e.g. 1500)
+- method: cash or bank
+- date_paid: the day the money was received, formatted YYYY-MM-DD (e.g. 2026-07-03) (required)
+- first_month: first month this payment covers, formatted YYYY-MM (e.g. 2026-07)
+- last_month: last month covered, formatted YYYY-MM; same as first_month for a single month
+- recurring: yes if it repeats automatically every month, otherwise leave empty
+- extra: yes if the money is NOT tied to specific months (e.g. settling old dues), otherwise empty
+- on_dashboard: no to keep the payment out of the dashboard totals, otherwise yes
+- notes: free text, or empty
+
+Wrap any value containing a comma in double quotes. Output only the CSV content, no explanations, no markdown code fences.`
+
+  function copyPaymentsCsvPrompt() {
+    navigator.clipboard
+      .writeText(PAYMENTS_CSV_PROMPT)
+      .then(() =>
+        toast({
+          title: "Prompt copied",
+          description: "Paste it to an AI with your raw data to get an import-ready CSV.",
+          variant: "success",
+        })
+      )
+      .catch(() =>
+        toast({ title: "Copy failed", description: "Your browser blocked clipboard access.", variant: "destructive" })
+      )
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -520,6 +635,8 @@ function ApartmentsContent() {
           period_start: firstDayOfMonth(firstKey),
           period_end: lastDayOfMonth(lastKey >= firstKey ? lastKey : firstKey),
           recurring: ["yes", "true", "1"].includes((o.recurring || "").toLowerCase()),
+          extra: ["yes", "true", "1"].includes((o.extra || "").toLowerCase()),
+          on_dashboard: !["no", "false", "0"].includes((o.on_dashboard || "").toLowerCase()),
           notes: o.notes || "",
         })
       }
@@ -729,15 +846,21 @@ function ApartmentsContent() {
           <CardContent className="space-y-3">
             <div className="overflow-x-auto">
               <div className="flex gap-1.5 min-w-max">
-                {cells.map((s, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">{MONTH_LABELS[i]}</span>
-                    <div
-                      className={cn("h-7 w-10 rounded-sm", monthCellClass(s))}
-                      title={`${MONTH_LABELS[i]} ${gridYear}: ${monthCellTitle(s)}`}
-                    />
-                  </div>
-                ))}
+                {cells.map((s, i) => {
+                  const key = `${gridYear}-${String(i + 1).padStart(2, "0")}`
+                  const letter = s === "paid" ? monthMethodLetter(apt.id, key) : undefined
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">{MONTH_LABELS[i]}</span>
+                      <div
+                        className={cn("flex h-7 w-10 items-center justify-center rounded-sm text-[10px] font-bold text-white", monthCellClass(s))}
+                        title={`${MONTH_LABELS[i]} ${gridYear}: ${monthCellTitle(s)}${letter ? ` (${letter === "C/B" ? "cash + bank" : letter === "C" ? "cash" : "bank"})` : ""}`}
+                      >
+                        {letter ?? ""}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
             {gridLegend}
@@ -781,7 +904,14 @@ function ApartmentsContent() {
                           <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
                         </TableCell>
                         <TableCell className="text-sm whitespace-nowrap">
-                          {monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))}
+                          {p.extra ? (
+                            <Badge variant="outline" title="Not tied to months">Extra</Badge>
+                          ) : (
+                            monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))
+                          )}
+                          {p.on_dashboard === false && (
+                            <Badge variant="secondary" className="ml-1" title="Hidden from the dashboard totals">Off dash</Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate">{p.notes || "—"}</TableCell>
                         <TableCell className="text-right">
@@ -842,6 +972,9 @@ function ApartmentsContent() {
           </Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="mr-1 h-4 w-4" /> Import CSV
+          </Button>
+          <Button variant="outline" onClick={copyPaymentsCsvPrompt} title="Copy an AI prompt that converts your raw data into an import-ready CSV">
+            <ClipboardCopy className="mr-1 h-4 w-4" /> Copy CSV Prompt
           </Button>
           <input
             ref={fileInputRef}
@@ -998,7 +1131,8 @@ function ApartmentsContent() {
           <div>
             <CardTitle>Collection Grid</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              Paid months per apartment at a glance, lowest unit first.
+              Paid months per apartment at a glance, lowest unit first — it
+              follows the search and filters above. C = paid in cash, B = by bank.
             </p>
           </div>
           {yearNav}
@@ -1019,7 +1153,9 @@ function ApartmentsContent() {
                 {gridApartments.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
-                      No apartments yet
+                      {apartmentsWithStatus.length === 0
+                        ? "No apartments yet"
+                        : "No apartments match your search/filters"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1034,14 +1170,20 @@ function ApartmentsContent() {
                         <TableCell className="font-medium sticky left-0 bg-card whitespace-nowrap">
                           {apt.unit_number}
                         </TableCell>
-                        {cells.map((s, i) => (
-                          <TableCell key={i} className="px-1 py-2 text-center">
-                            <div
-                              className={cn("mx-auto h-5 w-7 rounded-sm", monthCellClass(s))}
-                              title={`Unit ${apt.unit_number} — ${MONTH_LABELS[i]} ${gridYear}: ${monthCellTitle(s)}`}
-                            />
-                          </TableCell>
-                        ))}
+                        {cells.map((s, i) => {
+                          const key = `${gridYear}-${String(i + 1).padStart(2, "0")}`
+                          const letter = s === "paid" ? monthMethodLetter(apt.id, key) : undefined
+                          return (
+                            <TableCell key={i} className="px-1 py-2 text-center">
+                              <div
+                                className={cn("mx-auto flex h-5 w-7 items-center justify-center rounded-sm text-[9px] font-bold text-white", monthCellClass(s))}
+                                title={`Unit ${apt.unit_number} — ${MONTH_LABELS[i]} ${gridYear}: ${monthCellTitle(s)}${letter ? ` (${letter === "C/B" ? "cash + bank" : letter === "C" ? "cash" : "bank"})` : ""}`}
+                              >
+                                {letter ?? ""}
+                              </div>
+                            </TableCell>
+                          )
+                        })}
                         <TableCell className="text-right font-medium whitespace-nowrap">
                           {formatCurrency(collectedByApartment.get(apt.id) ?? 0)}
                         </TableCell>
@@ -1102,7 +1244,14 @@ function ApartmentsContent() {
                         <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
                       </TableCell>
                       <TableCell className="text-sm whitespace-nowrap">
-                        {monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))}
+                        {p.extra ? (
+                          <Badge variant="outline" title="Not tied to months">Extra</Badge>
+                        ) : (
+                          monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))
+                        )}
+                        {p.on_dashboard === false && (
+                          <Badge variant="secondary" className="ml-1" title="Hidden from the dashboard totals">Off dash</Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
@@ -1310,38 +1459,72 @@ function ApartmentsContent() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>First Month Paid *</Label>
-                <Input
-                  type="month"
-                  value={payForm.from_month}
-                  onChange={(e) => setPayForm({ ...payForm, from_month: e.target.value })}
+            {/* extra payments aren't tied to months, so skip the month fields */}
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Extra payment (not tied to months)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    For money like last year&apos;s dues paid now — it won&apos;t
+                    mark any month as paid
+                  </p>
+                </div>
+                <Switch
+                  checked={payForm.extra}
+                  onCheckedChange={(v) => setPayForm({ ...payForm, extra: v, recurring: v ? false : payForm.recurring })}
                 />
               </div>
-              <div>
-                <Label>Number of Months</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={payForm.months_count}
-                  onChange={(e) => {
-                    const c = Math.max(1, parseInt(e.target.value) || 1)
-                    setPayForm({
-                      ...payForm,
-                      months_count: e.target.value,
-                      amount: !editingPayment && due > 0 ? String(due * c) : payForm.amount,
-                    })
-                  }}
-                />
-              </div>
+              {payForm.extra && (
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <div>
+                    <Label>Count on dashboard</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Off = the money stays out of every dashboard total
+                    </p>
+                  </div>
+                  <Switch
+                    checked={payForm.on_dashboard}
+                    onCheckedChange={(v) => setPayForm({ ...payForm, on_dashboard: v })}
+                  />
+                </div>
+              )}
             </div>
-            {isValidMonthKey(payForm.from_month) && (
-              <p className="text-xs text-muted-foreground -mt-2">
-                Covers: {monthRangeLabel(payForm.from_month, endMonth)}
-                {due > 0 && ` · expected ${formatCurrency(due * count)}`}
-              </p>
+            {!payForm.extra && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>First Month Paid *</Label>
+                    <Input
+                      type="month"
+                      value={payForm.from_month}
+                      onChange={(e) => setPayForm({ ...payForm, from_month: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Number of Months</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="24"
+                      value={payForm.months_count}
+                      onChange={(e) => {
+                        const c = Math.max(1, parseInt(e.target.value) || 1)
+                        setPayForm({
+                          ...payForm,
+                          months_count: e.target.value,
+                          amount: !editingPayment && due > 0 ? String(due * c) : payForm.amount,
+                        })
+                      }}
+                    />
+                  </div>
+                </div>
+                {isValidMonthKey(payForm.from_month) && (
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    Covers: {monthRangeLabel(payForm.from_month, endMonth)}
+                    {due > 0 && ` · expected ${formatCurrency(due * count)}`}
+                  </p>
+                )}
+              </>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1370,18 +1553,20 @@ function ApartmentsContent() {
               <Label>Date Paid *</Label>
               <Input type="date" value={payForm.date_paid} onChange={(e) => setPayForm({ ...payForm, date_paid: e.target.value })} />
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <Label>Repeat monthly</Label>
-                <p className="text-xs text-muted-foreground">
-                  Automatically add this payment again each month
-                </p>
+            {!payForm.extra && (
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div>
+                  <Label>Repeat monthly</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically add this payment again each month
+                  </p>
+                </div>
+                <Switch
+                  checked={payForm.recurring}
+                  onCheckedChange={(v) => setPayForm({ ...payForm, recurring: v })}
+                />
               </div>
-              <Switch
-                checked={payForm.recurring}
-                onCheckedChange={(v) => setPayForm({ ...payForm, recurring: v })}
-              />
-            </div>
+            )}
             <div>
               <Label>Notes</Label>
               <Textarea value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} />
