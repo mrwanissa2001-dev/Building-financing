@@ -39,91 +39,164 @@
   --color-chart-6: var(--chart-6);
   --color-chart-7: var(--chart-7);
   --color-chart-8: var(--chart-8);
+  --color-seq-1: var(--seq-1);
+  --color-seq-2: var(--seq-2);
+  --color-seq-3: var(--seq-3);
+  --color-seq-4: var(--seq-4);
+  --color-seq-5: var(--seq-5);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+  Palette — warm stone neutrals + a deep emerald primary. Chosen to read as
+  "finance / wealth" rather than a technical console. The chart ramps below
+  were validated with the data-viz palette script (CVD, lightness band,
+  chroma floor, surface contrast) against the card surfaces in each mode.
+*/
 :root {
-  --radius: 0.625rem;
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #2563eb;
+  --radius: 0.75rem;
+
+  --background: #f6f4ef;   /* warm page plane */
+  --foreground: #1b1a16;   /* warm near-black ink */
+  --card: #fffdf9;         /* card surface (validator surface) */
+  --card-foreground: #1b1a16;
+  --popover: #fffdf9;
+  --popover-foreground: #1b1a16;
+
+  --primary: #0b7a55;      /* deep emerald */
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
+  --secondary: #efece4;
+  --secondary-foreground: #1b1a16;
+  --muted: #efece4;
+  --muted-foreground: #736e64;
+  --accent: #eae6db;
+  --accent-foreground: #1b1a16;
+
+  --destructive: #c1502e;  /* warm clay, not alarm-red */
   --destructive-foreground: #ffffff;
-  --success: #10b981;
+  --success: #0b7a55;
   --success-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #2563eb;
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #0f172a;
-  --sidebar-border: #e2e8f0;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #0f172a;
-  --chart-1: #2563eb;
-  --chart-2: #10b981;
-  --chart-3: #f59e0b;
-  --chart-4: #ef4444;
-  --chart-5: #8b5cf6;
-  --chart-6: #06b6d4;
-  --chart-7: #f97316;
-  --chart-8: #ec4899;
+  --warning: #c8891f;
+  --warning-foreground: #1b1a16;
+
+  --border: #e6e1d7;
+  --input: #e6e1d7;
+  --ring: #0b7a55;
+
+  --sidebar: #efece4;
+  --sidebar-foreground: #1b1a16;
+  --sidebar-border: #e2ddd1;
+  --sidebar-accent: #e4dfd3;
+  --sidebar-accent-foreground: #0b7a55;
+
+  /* positive / negative deltas (text tokens, not series colors) */
+  --pos: #006844;
+  --neg: #b0472a;
+
+  /* categorical chart hues — emerald · clay · plum · amber */
+  --chart-1: #0b7a55;
+  --chart-2: #c1502e;
+  --chart-3: #8f4a86;
+  --chart-4: #c8891f;
+  --chart-5: #178f64;
+  --chart-6: #a5623a;
+  --chart-7: #6f6f2f;
+  --chart-8: #b06aa0;
+
+  /* emerald sequential ramp (light→… ) for the category donut */
+  --seq-1: #0a4a34;
+  --seq-2: #106a4b;
+  --seq-3: #178f64;
+  --seq-4: #28ab81;
+  --seq-5: #5cc79f;
+
+  /* distinct categorical hues for the category donut (validated CVD ≥ 17) */
+  --cat-1: #0b7a55;
+  --cat-2: #c8891f;
+  --cat-3: #8f4a86;
+  --cat-4: #2a72b8;
+  --cat-5: #c1502e;
+  --cat-6: #b5487f;
+
+  --hero-from: #0b7a55;
+  --hero-to: #0a5f45;
 }
 
 .dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
-  --card: #1e293b;
-  --card-foreground: #f1f5f9;
-  --popover: #1e293b;
-  --popover-foreground: #f1f5f9;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --secondary: #334155;
-  --secondary-foreground: #f1f5f9;
-  --muted: #334155;
-  --muted-foreground: #94a3b8;
-  --accent: #334155;
-  --accent-foreground: #f1f5f9;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --success: #10b981;
-  --success-foreground: #ffffff;
-  --warning: #f59e0b;
-  --warning-foreground: #ffffff;
-  --border: #334155;
-  --input: #334155;
-  --ring: #3b82f6;
-  --sidebar: #1e293b;
-  --sidebar-foreground: #f1f5f9;
-  --sidebar-border: #334155;
-  --sidebar-accent: #334155;
-  --sidebar-accent-foreground: #f1f5f9;
-  --chart-1: #3b82f6;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #f87171;
-  --chart-5: #a78bfa;
-  --chart-6: #22d3ee;
-  --chart-7: #fb923c;
-  --chart-8: #f472b6;
+  --background: #141310;
+  --foreground: #f4f1ea;
+  --card: #1f1d18;
+  --card-foreground: #f4f1ea;
+  --popover: #1f1d18;
+  --popover-foreground: #f4f1ea;
+
+  --primary: #26a179;
+  --primary-foreground: #08120d;
+  --secondary: #2a271f;
+  --secondary-foreground: #f4f1ea;
+  --muted: #2a271f;
+  --muted-foreground: #a49d90;
+  --accent: #302c24;
+  --accent-foreground: #f4f1ea;
+
+  --destructive: #e0674a;
+  --destructive-foreground: #1b120e;
+  --success: #26a179;
+  --success-foreground: #08120d;
+  --warning: #d69a37;
+  --warning-foreground: #1b1a16;
+
+  --border: #302c24;
+  --input: #302c24;
+  --ring: #26a179;
+
+  --sidebar: #1a1813;
+  --sidebar-foreground: #f4f1ea;
+  --sidebar-border: #302c24;
+  --sidebar-accent: #2a271f;
+  --sidebar-accent-foreground: #26a179;
+
+  --pos: #4cc79a;
+  --neg: #e0674a;
+
+  --chart-1: #26a179;
+  --chart-2: #e0674a;
+  --chart-3: #b06aa0;
+  --chart-4: #b8802f;
+  --chart-5: #33ab7d;
+  --chart-6: #d0824f;
+  --chart-7: #a8a34f;
+  --chart-8: #c88ac0;
+
+  --seq-1: #1d6b4b;
+  --seq-2: #268f64;
+  --seq-3: #33ab7d;
+  --seq-4: #52c296;
+  --seq-5: #8ad9bd;
+
+  --cat-1: #22a074;
+  --cat-2: #bd8629;
+  --cat-3: #b06aa0;
+  --cat-4: #5b93d0;
+  --cat-5: #e0674a;
+  --cat-6: #cf6f9f;
+
+  --hero-from: #0f7a58;
+  --hero-to: #0a5b43;
 }
 
 * {
@@ -170,8 +243,35 @@ body {
   color: var(--card-foreground) !important;
 }
 
-/* Arabic RTL: keep numbers/dates readable and flip paddings that
-   Tailwind's physical utilities don't mirror automatically */
+/* Arabic RTL */
 [dir='rtl'] {
   direction: rtl;
+}
+
+@layer utilities {
+  /* Soft, layered card elevation — quiet in light, a touch of lift in dark */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px -1px rgb(24 23 18 / 0.08),
+      0 2px 8px -2px rgb(24 23 18 / 0.06);
+  }
+  .dark .shadow-card {
+    box-shadow:
+      0 1px 2px -1px rgb(0 0 0 / 0.5),
+      0 4px 16px -4px rgb(0 0 0 / 0.4);
+  }
+  .shadow-card-hover {
+    box-shadow:
+      0 2px 4px -2px rgb(24 23 18 / 0.1),
+      0 8px 24px -6px rgb(11 122 85 / 0.14);
+  }
+  .dark .shadow-card-hover {
+    box-shadow:
+      0 2px 6px -2px rgb(0 0 0 / 0.55),
+      0 10px 30px -6px rgb(0 0 0 / 0.5);
+  }
+  /* Tabular figures for aligned columns / axis ticks */
+  .nums {
+    font-variant-numeric: tabular-nums;
+  }
 }

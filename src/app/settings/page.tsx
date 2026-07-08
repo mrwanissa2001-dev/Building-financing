@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useStore } from "@/lib/store"
 import { useToast } from "@/components/ui/use-toast"
 import { testConnection } from "@/lib/supabase-data"
 import { buildingFloors } from "@/lib/constants"
 import { formatCurrency } from "@/lib/utils"
 import { parseAmount } from "@/lib/csv"
-import type { CategoryPerson, YearlyHistory } from "@/lib/types"
+import type { Apartment, CategoryPerson, YearlyHistory } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,7 +37,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useI18n, LANGUAGES, type Lang } from "@/lib/i18n"
-import { Plus, Trash2, Check, Pencil, X, Users, History, Languages } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Plus, Trash2, Check, Pencil, X, Users, History, Languages, LayoutGrid } from "lucide-react"
+
+// natural unit sort: "2" before "10"
+const unitCompare = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
 
 export default function SettingsPage() {
   const {
@@ -49,6 +60,9 @@ export default function SettingsPage() {
     addHistory,
     updateHistory,
     deleteHistory,
+    addApartment,
+    updateApartment,
+    deleteApartment,
   } = useStore()
   const { toast } = useToast()
   const { t, lang, setLang } = useI18n()
@@ -85,6 +99,11 @@ export default function SettingsPage() {
   const [breakdownHistId, setBreakdownHistId] = useState<string | null>(null)
   const [breakdownPercents, setBreakdownPercents] = useState<Record<string, string>>({})
 
+  // floor-plan editor state
+  const [planBuilding, setPlanBuilding] = useState("1")
+  const [unitDraft, setUnitDraft] = useState<Record<string, string>>({})
+  const [deletePlanApt, setDeletePlanApt] = useState<Apartment | null>(null)
+
   useEffect(() => {
     testConnection().then(({ ok, message }) => {
       setConnStatus(ok ? 'connected' : 'error')
@@ -106,6 +125,24 @@ export default function SettingsPage() {
       setApartmentsPerFloor(state.settings.apartments_per_floor.toString())
     }
   }, [state.loaded, state.settings])
+
+  // ── Floor plan ──
+  const numBuildingsSaved = Math.max(1, state.settings.num_buildings || 1)
+  const planFloors = useMemo(
+    () => buildingFloors(state.settings.mezzanine_floors, state.settings.num_floors),
+    [state.settings.mezzanine_floors, state.settings.num_floors]
+  )
+  const aptsByFloor = useMemo(() => {
+    const m = new Map<string, Apartment[]>()
+    for (const a of state.apartments) {
+      if (numBuildingsSaved > 1 && String(a.building_no ?? 1) !== planBuilding) continue
+      const arr = m.get(a.floor) ?? []
+      arr.push(a)
+      m.set(a.floor, arr)
+    }
+    for (const arr of m.values()) arr.sort((x, y) => unitCompare(x.unit_number, y.unit_number))
+    return m
+  }, [state.apartments, planBuilding, numBuildingsSaved])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -264,6 +301,49 @@ export default function SettingsPage() {
     const n = parseFloat(v)
     return s + (isNaN(n) ? 0 : n)
   }, 0)
+
+  // ── Floor plan actions ──
+  function addUnitToFloor(floor: string) {
+    const buildingNo = numBuildingsSaved > 1 ? parseInt(planBuilding, 10) || 1 : 1
+    const onFloor = state.apartments.filter(
+      (a) => a.floor === floor && (a.building_no ?? 1) === buildingNo
+    )
+    const isNum = /^\d+$/.test(floor)
+    // suggest the next unit name; keep bumping if it collides
+    let n = onFloor.length + 1
+    const taken = new Set(state.apartments.map((a) => a.unit_number))
+    let unit = isNum ? `${floor}${String(n).padStart(2, "0")}` : `${floor}-${n}`
+    while (taken.has(unit)) {
+      n += 1
+      unit = isNum ? `${floor}${String(n).padStart(2, "0")}` : `${floor}-${n}`
+    }
+    addApartment({
+      unit_number: unit,
+      building_no: buildingNo,
+      floor,
+      primary_resident_name: "",
+      secondary_resident_name: "",
+      phone: "",
+      phone2: "",
+      email: "",
+      payment_interval: "monthly",
+      monthly_due_amount: 0,
+      occupancy_status: "active",
+      notes: "",
+    })
+  }
+
+  function commitUnitName(apt: Apartment) {
+    const next = (unitDraft[apt.id] ?? apt.unit_number).trim()
+    setUnitDraft((m) => {
+      const { [apt.id]: _drop, ...rest } = m
+      void _drop
+      return rest
+    })
+    if (next && next !== apt.unit_number) updateApartment({ ...apt, unit_number: next })
+  }
+
+  const planApartmentCount = Array.from(aptsByFloor.values()).reduce((s, a) => s + a.length, 0)
 
   return (
     <div className="space-y-6">
@@ -473,6 +553,99 @@ export default function SettingsPage() {
             <Button type="submit">{t("Save Settings")}</Button>
           </CardFooter>
         </form>
+      </Card>
+
+      {/* Floor plan — per-floor apartments with editable names */}
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5" /> Floor Plan
+              </CardTitle>
+              <CardDescription>
+                Set exactly how many apartments each floor holds and name each one — a
+                floor can carry several joined units. Blank details (resident, dues) can be
+                filled later on the Apartments page.
+              </CardDescription>
+            </div>
+            {numBuildingsSaved > 1 && (
+              <Select value={planBuilding} onValueChange={setPlanBuilding}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: numBuildingsSaved }, (_, i) => String(i + 1)).map((b) => (
+                    <SelectItem key={b} value={b}>
+                      Building {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-2 text-sm text-muted-foreground">
+            {planApartmentCount} apartment{planApartmentCount !== 1 ? "s" : ""}
+            {numBuildingsSaved > 1 ? ` in Building ${planBuilding}` : ""} across{" "}
+            {planFloors.length} floors
+          </p>
+          <div className="divide-y divide-border">
+            {planFloors.map((floor) => {
+              const apts = aptsByFloor.get(floor) ?? []
+              return (
+                <div key={floor} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start">
+                  <div className="w-28 shrink-0 pt-1.5">
+                    <span className="text-sm font-semibold">
+                      {floor.startsWith("M") ? `Mezzanine ${floor}` : `Floor ${floor}`}
+                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">({apts.length})</span>
+                  </div>
+                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                    {apts.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-0.5 rounded-lg border border-border bg-muted/30 py-1 pl-1.5 pr-0.5"
+                      >
+                        <Input
+                          value={unitDraft[a.id] ?? a.unit_number}
+                          onChange={(e) => setUnitDraft((m) => ({ ...m, [a.id]: e.target.value }))}
+                          onBlur={() => commitUnitName(a)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              ;(e.target as HTMLInputElement).blur()
+                            }
+                          }}
+                          aria-label={`Unit name on floor ${floor}`}
+                          className="h-7 w-16 border-0 bg-transparent px-1 text-center text-sm font-medium shadow-none focus-visible:ring-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => setDeletePlanApt(a)}
+                          aria-label={`Remove unit ${a.unit_number}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-dashed"
+                      onClick={() => addUnitToFloor(floor)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
       </Card>
 
       {/* People per expense category (security guards, cleaners, ...) */}
@@ -775,6 +948,33 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Floor-plan delete confirmation */}
+      <Dialog open={!!deletePlanApt} onOpenChange={() => setDeletePlanApt(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove apartment {deletePlanApt?.unit_number}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This permanently deletes the apartment and every payment recorded against it.
+            This can&apos;t be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePlanApt(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deletePlanApt) deleteApartment(deletePlanApt.id)
+                setDeletePlanApt(null)
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

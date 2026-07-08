@@ -8,7 +8,9 @@ export type PaymentMethod = 'cash' | 'bank'
 
 export type PaymentStatus = 'paid' | 'due_soon' | 'overdue'
 
-export type PayerRelation = '' | 'father' | 'mother' | 'sister' | 'brother' | 'son' | 'daughter' | 'friend' | 'other'
+// Built-in relations are suggested in the dropdown, but any custom relation
+// typed via the "Add relation…" flow is stored verbatim and reused later.
+export type PayerRelation = string
 
 // floor is 'M1' | 'M2' (mezzanine) or '1'..'13'
 export interface Apartment {

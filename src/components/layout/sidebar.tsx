@@ -11,6 +11,7 @@ import {
   Building2,
   Receipt,
   Settings,
+  SlidersHorizontal,
   Sun,
   Moon,
   Menu,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/apartments", label: "Apartments & Payments", icon: Building2 },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/settings", label: "Building Setup", icon: Settings },
+  { href: "/appearance", label: "Settings", icon: SlidersHorizontal },
 ]
 
 interface SidebarProps {
