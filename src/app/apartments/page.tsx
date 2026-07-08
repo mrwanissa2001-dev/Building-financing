@@ -3,9 +3,10 @@
 import { useState, useMemo, useEffect, useRef, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
+import { useLayout } from "@/lib/layout"
 import { useComputed } from "@/hooks/use-computed"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
-import { OCCUPANCY_STATUSES, PAYMENT_METHODS, buildingFloors, PAYER_RELATIONS } from "@/lib/constants"
+import { OCCUPANCY_STATUSES, PAYMENT_METHODS, buildingFloors, PAYER_RELATIONS, relationLabel } from "@/lib/constants"
 import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
 import {
   monthKey,
@@ -52,6 +53,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { CreatableSelect } from "@/components/ui/creatable-select"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Plus,
@@ -95,9 +98,6 @@ const occupancyBadgeVariant = (status: OccupancyStatus) => {
     case "traveling_but_paying": return "warning" as const
   }
 }
-
-const relationLabel = (value: PayerRelation) =>
-  PAYER_RELATIONS.find((r) => r.value === value)?.label ?? "—"
 
 // natural sort: unit "2" before unit "10"
 const unitCompare = (a: string, b: string) =>
@@ -158,6 +158,7 @@ export default function ApartmentsPage() {
 
 function ApartmentsContent() {
   const { state, addApartment, updateApartment, deleteApartment, addPayment, updatePayment, deletePayment, importPayments } = useStore()
+  const { visibleKeys } = useLayout()
   const { apartmentsWithStatus, getPaymentsForApartment, getMonthCells, getCoverage } = useComputed()
   const { toast } = useToast()
   const { t } = useI18n()
@@ -180,6 +181,9 @@ function ApartmentsContent() {
   })
   const [filterFloor, setFilterFloor] = useState<string>(() => searchParams.get("floor") ?? "all")
   const [filterBuilding, setFilterBuilding] = useState<string>("all")
+  // date range scopes the Payment Log by date paid
+  const [filterPayStart, setFilterPayStart] = useState(() => searchParams.get("start") ?? "")
+  const [filterPayEnd, setFilterPayEnd] = useState(() => searchParams.get("end") ?? "")
 
   const [sortField, setSortField] = useState<SortField>("unit_number")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -215,13 +219,30 @@ function ApartmentsContent() {
   )
   const numBuildings = Math.max(1, state.settings.num_buildings || 1)
 
+  // relation choices: built-ins plus any custom relation already saved on a
+  // payment, so a one-off "Add relation…" value stays available afterwards
+  const relationOptions = useMemo(() => {
+    const known = new Set(PAYER_RELATIONS.map((r) => r.value))
+    const custom = new Set<string>()
+    for (const p of state.payments) {
+      const r = (p.payer_relation || "").trim()
+      if (r && !known.has(r)) custom.add(r)
+    }
+    return [
+      ...PAYER_RELATIONS.map((r) => ({ value: r.value, label: r.label })),
+      ...Array.from(custom).sort().map((r) => ({ value: r, label: relationLabel(r) })),
+    ]
+  }, [state.payments])
+
   const filtersActive =
     search !== "" ||
     filterStatus !== "all" ||
     filterOccupancy !== "all" ||
     filterMethod !== "all" ||
     filterFloor !== "all" ||
-    filterBuilding !== "all"
+    filterBuilding !== "all" ||
+    filterPayStart !== "" ||
+    filterPayEnd !== ""
 
   function resetFilters() {
     setSearch("")
@@ -230,6 +251,8 @@ function ApartmentsContent() {
     setFilterMethod("all")
     setFilterFloor("all")
     setFilterBuilding("all")
+    setFilterPayStart("")
+    setFilterPayEnd("")
   }
 
   const filtered = useMemo(() => {
@@ -330,6 +353,11 @@ function ApartmentsContent() {
   const paymentLog = useMemo(() => {
     const aptById = new Map(state.apartments.map((a) => [a.id, a]))
     return [...state.payments]
+      .filter((p) => {
+        if (filterPayStart && p.date_paid < filterPayStart) return false
+        if (filterPayEnd && p.date_paid > filterPayEnd) return false
+        return true
+      })
       .sort((a, b) =>
         b.date_paid.localeCompare(a.date_paid) ||
         (b.created_at || "").localeCompare(a.created_at || "")
@@ -338,7 +366,7 @@ function ApartmentsContent() {
         ...p,
         unit_number: aptById.get(p.apartment_id)?.unit_number ?? "?",
       }))
-  }, [state.payments, state.apartments])
+  }, [state.payments, state.apartments, filterPayStart, filterPayEnd])
 
   const selectedApt = useMemo(() => {
     if (!selectedId) return null
@@ -975,7 +1003,8 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
     )
   }
 
-  // Main List View
+  // Main List View — order & visibility of the three sections from Settings
+  const aptOrder = visibleKeys("apartments")
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1070,6 +1099,14 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{t(m.label)}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <DateRangePicker
+                className="h-9 font-normal"
+                value={{ start: filterPayStart, end: filterPayEnd }}
+                onChange={(r) => {
+                  setFilterPayStart(r.start)
+                  setFilterPayEnd(r.end)
+                }}
+              />
               {filtersActive && (
                 <Button variant="ghost" onClick={resetFilters}>
                   <RotateCcw className="mr-1 h-4 w-4" /> {t("Reset Filters")}
@@ -1080,6 +1117,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         </CardContent>
       </Card>
 
+      {/* Customisable widgets — order & visibility from Settings */}
+      <div className="flex flex-col gap-6">
+      {aptOrder.includes("summary") && (
+      <div style={{ order: aptOrder.indexOf("summary") }}>
       {/* Summary Table */}
       <Card>
         <CardHeader>
@@ -1145,6 +1186,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {aptOrder.includes("collection_grid") && (
+      <div style={{ order: aptOrder.indexOf("collection_grid") }}>
       {/* Monthly Collection Grid */}
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -1217,6 +1262,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {aptOrder.includes("payment_log") && (
+      <div style={{ order: aptOrder.indexOf("payment_log") }}>
       {/* Payment Log */}
       <Card>
         <CardHeader>
@@ -1290,6 +1339,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           </div>
         </CardContent>
       </Card>
+
+      </div>
+      )}
+      </div>
 
       {/* Add Apartment Dialog */}
       <Dialog open={aptDialogOpen} onOpenChange={setAptDialogOpen}>
@@ -1465,17 +1518,16 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </div>
               <div>
                 <Label>{t("Relation to Resident")}</Label>
-                <Select
-                  value={payForm.payer_relation || undefined}
+                <CreatableSelect
+                  placeholder={t("Optional")}
+                  createLabel={t("Add relation…")}
+                  inputPlaceholder="e.g. Cousin"
+                  capitalize
+                  value={payForm.payer_relation}
+                  options={relationOptions}
+                  onCreate={(name) => name.toLowerCase()}
                   onValueChange={(v) => setPayForm({ ...payForm, payer_relation: v as PayerRelation })}
-                >
-                  <SelectTrigger><SelectValue placeholder={t("Optional")} /></SelectTrigger>
-                  <SelectContent>
-                    {PAYER_RELATIONS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{t(r.label)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
             </div>
             {/* extra payments aren't tied to months, so skip the month fields */}

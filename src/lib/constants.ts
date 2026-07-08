@@ -39,8 +39,15 @@ export const PAYER_RELATIONS: { value: PayerRelation; label: string }[] = [
   { value: 'son', label: 'Son' },
   { value: 'daughter', label: 'Daughter' },
   { value: 'friend', label: 'Friend' },
-  { value: 'other', label: 'Other' },
 ]
+
+// Title-case any relation for display — built-in or custom
+export function relationLabel(value: PayerRelation): string {
+  if (!value) return '—'
+  const found = PAYER_RELATIONS.find((r) => r.value === value)
+  if (found) return found.label
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 export const OCCUPANCY_STATUSES: { value: OccupancyStatus; label: string }[] = [
   { value: 'active', label: 'Active' },

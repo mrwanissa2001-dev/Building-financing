@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
+import { useLayout } from "@/lib/layout"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from "@/lib/constants"
 import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
@@ -42,6 +43,8 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select"
+import { CreatableSelect } from "@/components/ui/creatable-select"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Plus,
   Pencil,
@@ -109,7 +112,9 @@ export default function ExpensesPage() {
 }
 
 function ExpensesContent() {
-  const { state, addExpense, updateExpense, deleteExpense, importExpenses } = useStore()
+  const { state, addExpense, updateExpense, deleteExpense, importExpenses, addCategory } = useStore()
+  const { visibleKeys } = useLayout()
+  const expOrder = visibleKeys("expenses")
   const { toast } = useToast()
   const { t } = useI18n()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -540,23 +545,16 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
           <div className="min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              {t("Start Date")}
+              {t("Date Range")}
             </Label>
-            <Input
-              type="date"
-              value={filterDateStart}
-              onChange={(e) => setFilterDateStart(e.target.value)}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <Label className="mb-1.5 block text-xs text-muted-foreground">
-              {t("End Date")}
-            </Label>
-            <Input
-              type="date"
-              value={filterDateEnd}
-              onChange={(e) => setFilterDateEnd(e.target.value)}
+            <DateRangePicker
+              align="start"
+              className="h-9 w-full justify-start font-normal"
+              value={{ start: filterDateStart, end: filterDateEnd }}
+              onChange={(r) => {
+                setFilterDateStart(r.start)
+                setFilterDateEnd(r.end)
+              }}
             />
           </div>
 
@@ -598,6 +596,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         )}
       </div>
 
+      {/* Customisable widgets — order & visibility from Settings */}
+      <div className="flex flex-col gap-6">
+      {expOrder.includes("recurring_grid") && (
+      <div style={{ order: expOrder.indexOf("recurring_grid") }}>
       {/* Recurring expenses month grid */}
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -681,6 +683,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         </CardContent>
       </Card>
 
+      </div>
+      )}
+      {expOrder.includes("expenses_table") && (
+      <div style={{ order: expOrder.indexOf("expenses_table") }}>
       {/* Table */}
       <div className="rounded-lg border border-border">
         <div className="overflow-x-auto">
@@ -789,6 +795,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           </Table>
         </div>
       </div>
+      </div>
+      )}
+      </div>
 
       {/* Add / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -807,8 +816,15 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="category">{t("Category")}</Label>
-                <Select
+                <CreatableSelect
+                  id="category"
+                  capitalize
+                  placeholder={t("Select category")}
+                  createLabel={t("Add category…")}
+                  inputPlaceholder="New category name…"
                   value={form.category_id}
+                  options={state.categories.map((cat) => ({ value: cat.id, label: cat.name }))}
+                  onCreate={(name) => addCategory(name).id}
                   onValueChange={(val) => {
                     const people = peopleFor(val)
                     setForm((f) => ({
@@ -819,18 +835,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                     }))
                     setCustomVendor(people.length === 0)
                   }}
-                >
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder={t("Select category")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {t(cat.name)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
                 {formPeople.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {t("{n} staff under this category", { n: formPeople.length })}
