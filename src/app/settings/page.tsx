@@ -29,7 +29,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Plus, Trash2, Check, Pencil, X, Users, History } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useI18n, LANGUAGES, type Lang } from "@/lib/i18n"
+import { Plus, Trash2, Check, Pencil, X, Users, History, Languages } from "lucide-react"
 
 export default function SettingsPage() {
   const {
@@ -43,6 +51,7 @@ export default function SettingsPage() {
     deleteHistory,
   } = useStore()
   const { toast } = useToast()
+  const { t, lang, setLang } = useI18n()
 
   const [buildingName, setBuildingName] = useState("")
   const [totalApartments, setTotalApartments] = useState("")
@@ -125,8 +134,8 @@ export default function SettingsPage() {
     })
 
     toast({
-      title: "Settings saved!",
-      description: "Your building settings have been updated.",
+      title: t("Settings saved!"),
+      description: t("Your building settings have been updated."),
       variant: "success",
     })
   }
@@ -187,15 +196,15 @@ export default function SettingsPage() {
     const currentYear = new Date().getFullYear()
     if (isNaN(year) || year < 1900 || year > currentYear || isNaN(income) || isNaN(expenditure)) {
       toast({
-        title: "Invalid year data",
-        description: `Enter a year up to ${currentYear} plus its income and expenditure totals.`,
+        title: t("Invalid year data"),
+        description: t("Enter a year up to {year} plus its income and expenditure totals.", { year: currentYear }),
         variant: "destructive",
       })
       return
     }
     const duplicate = state.history.find((h) => h.year === year && h.id !== editingHistId)
     if (duplicate) {
-      toast({ title: "Year already exists", description: `Edit the existing ${year} row instead.`, variant: "destructive" })
+      toast({ title: t("Year already exists"), description: t("Edit the existing {year} row instead.", { year }), variant: "destructive" })
       return
     }
     // splits are optional; blank = 0 = the year does not touch the balances
@@ -232,13 +241,13 @@ export default function SettingsPage() {
     }
     updateHistory({ ...h, expense_breakdown: breakdown })
     setBreakdownHistId(null)
-    toast({ title: "Breakdown saved", variant: "success" })
+    toast({ title: t("Breakdown saved"), variant: "success" })
   }
 
   if (!state.loaded) {
     return (
       <div className="flex items-center justify-center py-20">
-        <p className="text-muted-foreground">Loading settings...</p>
+        <p className="text-muted-foreground">{t("Loading settings...")}</p>
       </div>
     )
   }
@@ -259,11 +268,37 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Building Setup</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("Building Setup")}</h1>
         <p className="text-sm text-muted-foreground">
-          Configure your building&apos;s baseline settings
+          {t("Configure your building's baseline settings")}
         </p>
       </div>
+
+      {/* Language */}
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Languages className="h-4 w-4" />
+            {t("Language")}
+          </CardTitle>
+          <CardDescription>
+            {t("Choose the display language. Arabic flips the layout right-to-left.")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
+            <SelectTrigger className="w-[240px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((l) => (
+                <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("Numbers and dates keep Western digits so data entry stays consistent.")}
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Supabase connection status */}
       <Card className="max-w-2xl">
@@ -278,17 +313,17 @@ export default function SettingsPage() {
                   : 'h-2.5 w-2.5 rounded-full bg-yellow-400 inline-block'
               }
             />
-            Supabase Connection
+            {t("Supabase Connection")}
           </CardTitle>
           <CardDescription>
-            {connStatus === 'checking' && 'Checking connection…'}
-            {connStatus === 'connected' && 'Connected — data is being saved to Supabase.'}
+            {connStatus === 'checking' && t('Checking connection…')}
+            {connStatus === 'connected' && t('Connected — data is being saved to Supabase.')}
             {connStatus === 'error' && (
               <span className="text-red-600 dark:text-red-400">
-                Not connected: {connMessage}
+                {t("Not connected:")} {connMessage}
                 <br />
-                Add <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
-                <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel environment variables and redeploy.
+                {t("Add")} <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_URL</code> {t("and")}{' '}
+                <code className="font-mono text-xs">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> {t("to your Vercel environment variables and redeploy.")}
               </span>
             )}
           </CardDescription>
@@ -298,31 +333,30 @@ export default function SettingsPage() {
       <Card className="max-w-2xl">
         <form onSubmit={handleSubmit}>
           <CardHeader>
-            <CardTitle>Building Settings</CardTitle>
+            <CardTitle>{t("Building Settings")}</CardTitle>
             <CardDescription>
-              Set the basic parameters for your building to enable accurate
-              financial tracking and reporting.
+              {t("Set the basic parameters for your building to enable accurate financial tracking and reporting.")}
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="building-name">Building Name</Label>
+              <Label htmlFor="building-name">{t("Building Name")}</Label>
               <Input
                 id="building-name"
                 type="text"
-                placeholder="e.g. El Nour Tower"
+                placeholder={t("e.g. El Nour Tower")}
                 value={buildingName}
                 onChange={(e) => setBuildingName(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                The name of the building you live in.
+                {t("The name of the building you live in.")}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="num-buildings">Buildings</Label>
+                <Label htmlFor="num-buildings">{t("Buildings")}</Label>
                 <Input
                   id="num-buildings"
                   type="number"
@@ -334,7 +368,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="num-floors">Floors (numbered)</Label>
+                <Label htmlFor="num-floors">{t("Floors (numbered)")}</Label>
                 <Input
                   id="num-floors"
                   type="number"
@@ -346,7 +380,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mezzanine-floors">Mezzanine Floors</Label>
+                <Label htmlFor="mezzanine-floors">{t("Mezzanine Floors")}</Label>
                 <Input
                   id="mezzanine-floors"
                   type="number"
@@ -358,7 +392,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="apartments-per-floor">Apartments per Floor</Label>
+                <Label htmlFor="apartments-per-floor">{t("Apartments per Floor")}</Label>
                 <Input
                   id="apartments-per-floor"
                   type="number"
@@ -371,16 +405,15 @@ export default function SettingsPage() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground -mt-2">
-              These set hard limits when adding apartments: only floors{" "}
-              {floors[0]}–{floors[floors.length - 1]} are selectable
+              {t("These set hard limits when adding apartments: only floors {from}–{to} are selectable", { from: floors[0], to: floors[floors.length - 1] })}
               {perFloor > 0
-                ? `, at most ${perFloor} apartment${perFloor !== 1 ? "s" : ""} per floor (capacity ${capacity})`
-                : ". Set apartments per floor above 0 to also cap each floor"}
+                ? t(", at most {n} apartments per floor (capacity {cap})", { n: perFloor, cap: capacity })
+                : t(". Set apartments per floor above 0 to also cap each floor")}
               .
             </p>
 
             <div className="space-y-2">
-              <Label htmlFor="total-apartments">Total Apartments</Label>
+              <Label htmlFor="total-apartments">{t("Total Apartments")}</Label>
               <Input
                 id="total-apartments"
                 type="number"
@@ -392,14 +425,14 @@ export default function SettingsPage() {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                The total number of apartments in the building.
-                {capacity > 0 && ` Structure above allows up to ${capacity}.`}
+                {t("The total number of apartments in the building.")}
+                {capacity > 0 && ` ${t("Structure above allows up to {n}.", { n: capacity })}`}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="expected-income">
-                Expected Yearly Income (LE)
+                {t("Expected Yearly Income (LE)")}
               </Label>
               <Input
                 id="expected-income"
@@ -412,14 +445,13 @@ export default function SettingsPage() {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                The total income you expect to collect from all apartments per
-                year.
+                {t("The total income you expect to collect from all apartments per year.")}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="expected-expenditure">
-                Expected Yearly Expenditure (LE)
+                {t("Expected Yearly Expenditure (LE)")}
               </Label>
               <Input
                 id="expected-expenditure"
@@ -432,14 +464,13 @@ export default function SettingsPage() {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                The total amount you expect to spend on building expenses per
-                year.
+                {t("The total amount you expect to spend on building expenses per year.")}
               </p>
             </div>
           </CardContent>
 
           <CardFooter>
-            <Button type="submit">Save Settings</Button>
+            <Button type="submit">{t("Save Settings")}</Button>
           </CardFooter>
         </form>
       </Card>
@@ -448,27 +479,24 @@ export default function SettingsPage() {
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" /> Category Staff
+            <Users className="h-5 w-5" /> {t("Category Staff")}
           </CardTitle>
           <CardDescription>
-            The people working under each expense category — e.g. your
-            security guards. They appear as vendor choices when you add an
-            expense of that category, and you can add, rename, or remove them
-            here at any time.
+            {t("The people working under each expense category — e.g. your security guards. They appear as vendor choices when you add an expense of that category, and you can add, rename, or remove them here at any time.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           {state.categories.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No expense categories yet.</p>
+            <p className="text-sm text-muted-foreground">{t("No expense categories yet.")}</p>
           ) : (
             state.categories.map((cat) => {
               const people = peopleFor(cat.id)
               return (
                 <div key={cat.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium capitalize">{cat.name}</span>
+                    <span className="font-medium capitalize">{t(cat.name)}</span>
                     <Badge variant="secondary">
-                      {people.length} {people.length === 1 ? "person" : "people"}
+                      {t("{n} people", { n: people.length })}
                     </Badge>
                   </div>
                   <div className="space-y-1.5">
@@ -483,20 +511,20 @@ export default function SettingsPage() {
                               onKeyDown={(e) => { if (e.key === "Enter") saveRenamePerson(p) }}
                               autoFocus
                             />
-                            <Button size="icon" className="h-8 w-8 shrink-0" onClick={() => saveRenamePerson(p)} aria-label="Save name">
+                            <Button size="icon" className="h-8 w-8 shrink-0" onClick={() => saveRenamePerson(p)} aria-label={t("Save name")}>
                               <Check className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setEditingPersonId(null)} aria-label="Cancel rename">
+                            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setEditingPersonId(null)} aria-label={t("Cancel rename")}>
                               <X className="h-4 w-4" />
                             </Button>
                           </>
                         ) : (
                           <>
                             <span className="flex-1 text-sm">{p.name}</span>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startRenamePerson(p)} aria-label={`Rename ${p.name}`}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startRenamePerson(p)} aria-label={t("Rename {name}", { name: p.name })}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deletePerson(p.id)} aria-label={`Remove ${p.name}`}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => deletePerson(p.id)} aria-label={t("Remove {name}", { name: p.name })}>
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </>
@@ -507,13 +535,13 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <Input
                       className="h-8"
-                      placeholder={`Add a person to ${cat.name}...`}
+                      placeholder={t("Add a person to {category}...", { category: t(cat.name) })}
                       value={newPersonName[cat.id] || ""}
                       onChange={(e) => setNewPersonName((m) => ({ ...m, [cat.id]: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddPerson(cat.id) } }}
                     />
                     <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={() => handleAddPerson(cat.id)}>
-                      <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                      <Plus className="mr-1 h-3.5 w-3.5" /> {t("Add")}
                     </Button>
                   </div>
                 </div>
@@ -527,13 +555,10 @@ export default function SettingsPage() {
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" /> Previous Years
+            <History className="h-5 w-5" /> {t("Previous Years")}
           </CardTitle>
           <CardDescription>
-            Migrate earlier records without entering every payment: just the
-            income and expenditure totals per year. Optionally set the
-            percentage each category took of that year&apos;s expenditure for a
-            more detailed view.
+            {t("Migrate earlier records without entering every payment: just the income and expenditure totals per year. Optionally set the percentage each category took of that year's expenditure for a more detailed view.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -542,11 +567,11 @@ export default function SettingsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Year</TableHead>
-                    <TableHead>Income</TableHead>
-                    <TableHead>Expenditure</TableHead>
-                    <TableHead>Net</TableHead>
-                    <TableHead className="w-[130px] text-right">Actions</TableHead>
+                    <TableHead>{t("Year")}</TableHead>
+                    <TableHead>{t("Income")}</TableHead>
+                    <TableHead>{t("Expenditure")}</TableHead>
+                    <TableHead>{t("Net")}</TableHead>
+                    <TableHead className="w-[130px] text-right">{t("Actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -570,10 +595,10 @@ export default function SettingsPage() {
                             >
                               %
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditHistory(h)} aria-label={`Edit ${h.year}`}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditHistory(h)} aria-label={t("Edit {year}", { year: h.year })}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteHistory(h.id)} aria-label={`Delete ${h.year}`}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteHistory(h.id)} aria-label={t("Delete {year}", { year: h.year })}>
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </div>
@@ -593,14 +618,14 @@ export default function SettingsPage() {
             return (
               <div className="rounded-lg border border-border p-4 space-y-3">
                 <p className="text-sm font-medium">
-                  {h.year} expenditure breakdown ({formatCurrency(h.expenditure)} total)
+                  {t("{year} expenditure breakdown ({total} total)", { year: h.year, total: formatCurrency(h.expenditure) })}
                 </p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {state.categories.map((cat) => {
                     const pct = parseFloat(breakdownPercents[cat.name] || "")
                     return (
                       <div key={cat.id} className="space-y-1">
-                        <Label className="text-xs capitalize">{cat.name}</Label>
+                        <Label className="text-xs capitalize">{t(cat.name)}</Label>
                         <div className="flex items-center gap-1">
                           <Input
                             className="h-8"
@@ -626,11 +651,11 @@ export default function SettingsPage() {
                   })}
                 </div>
                 <p className={`text-xs ${Math.abs(breakdownTotal - 100) > 0.5 && breakdownTotal > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground"}`}>
-                  Total: {breakdownTotal}%{breakdownTotal > 0 && Math.abs(breakdownTotal - 100) > 0.5 ? " — doesn't add up to 100%" : ""}
+                  {t("Total:")} {breakdownTotal}%{breakdownTotal > 0 && Math.abs(breakdownTotal - 100) > 0.5 ? ` — ${t("doesn't add up to 100%")}` : ""}
                 </p>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => saveBreakdown(h)}>Save Breakdown</Button>
-                  <Button size="sm" variant="outline" onClick={() => setBreakdownHistId(null)}>Cancel</Button>
+                  <Button size="sm" onClick={() => saveBreakdown(h)}>{t("Save Breakdown")}</Button>
+                  <Button size="sm" variant="outline" onClick={() => setBreakdownHistId(null)}>{t("Cancel")}</Button>
                 </div>
               </div>
             )
@@ -639,11 +664,11 @@ export default function SettingsPage() {
           {/* Add / edit year form */}
           <div className="rounded-lg border border-border p-4 space-y-3">
             <p className="text-sm font-medium">
-              {editingHistId ? "Edit year" : "Add a previous year"}
+              {editingHistId ? t("Edit year") : t("Add a previous year")}
             </p>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="hist-year" className="text-xs">Year</Label>
+                <Label htmlFor="hist-year" className="text-xs">{t("Year")}</Label>
                 <Input
                   id="hist-year"
                   type="number"
@@ -653,7 +678,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="hist-income" className="text-xs">Income (LE)</Label>
+                <Label htmlFor="hist-income" className="text-xs">{t("Income (LE)")}</Label>
                 <Input
                   id="hist-income"
                   type="text"
@@ -664,7 +689,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="hist-expenditure" className="text-xs">Expenditure (LE)</Label>
+                <Label htmlFor="hist-expenditure" className="text-xs">{t("Expenditure (LE)")}</Label>
                 <Input
                   id="hist-expenditure"
                   type="text"
@@ -679,13 +704,11 @@ export default function SettingsPage() {
             {/* Optional cash/bank split → carries the year into the dashboard balances */}
             <div className="rounded-md bg-muted/40 p-3 space-y-3">
               <p className="text-xs text-muted-foreground">
-                Optional: split the totals between cash and bank to add this
-                year&apos;s money to the dashboard&apos;s Cash on Hand and Bank
-                Balance. Leave blank to keep the year as record-only.
+                {t("Optional: split the totals between cash and bank to add this year's money to the dashboard's Cash on Hand and Bank Balance. Leave blank to keep the year as record-only.")}
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="space-y-1">
-                  <Label htmlFor="hist-income-cash" className="text-xs">Income — Cash</Label>
+                  <Label htmlFor="hist-income-cash" className="text-xs">{t("Income — Cash")}</Label>
                   <Input
                     id="hist-income-cash"
                     type="text"
@@ -696,7 +719,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="hist-income-bank" className="text-xs">Income — Bank</Label>
+                  <Label htmlFor="hist-income-bank" className="text-xs">{t("Income — Bank")}</Label>
                   <Input
                     id="hist-income-bank"
                     type="text"
@@ -707,7 +730,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="hist-exp-cash" className="text-xs">Expenditure — Cash</Label>
+                  <Label htmlFor="hist-exp-cash" className="text-xs">{t("Expenditure — Cash")}</Label>
                   <Input
                     id="hist-exp-cash"
                     type="text"
@@ -718,7 +741,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="hist-exp-bank" className="text-xs">Expenditure — Bank</Label>
+                  <Label htmlFor="hist-exp-bank" className="text-xs">{t("Expenditure — Bank")}</Label>
                   <Input
                     id="hist-exp-bank"
                     type="text"
@@ -735,8 +758,7 @@ export default function SettingsPage() {
                 if (carriedCash === 0 && carriedBank === 0) return null
                 return (
                   <p className="text-xs text-muted-foreground">
-                    Carries {formatCurrency(carriedCash)} to cash and{" "}
-                    {formatCurrency(carriedBank)} to bank on the dashboard.
+                    {t("Carries {cash} to cash and {bank} to bank on the dashboard.", { cash: formatCurrency(carriedCash), bank: formatCurrency(carriedBank) })}
                   </p>
                 )
               })()}
@@ -744,10 +766,10 @@ export default function SettingsPage() {
 
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSubmitHistory}>
-                {editingHistId ? "Save Year" : <><Plus className="mr-1 h-3.5 w-3.5" /> Add Year</>}
+                {editingHistId ? t("Save Year") : <><Plus className="mr-1 h-3.5 w-3.5" /> {t("Add Year")}</>}
               </Button>
               {editingHistId && (
-                <Button size="sm" variant="outline" onClick={resetHistoryForm}>Cancel</Button>
+                <Button size="sm" variant="outline" onClick={resetHistoryForm}>{t("Cancel")}</Button>
               )}
             </div>
           </div>

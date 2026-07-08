@@ -9,6 +9,7 @@ import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from 
 import { monthKey, currentMonthKey, monthsBetween } from "@/lib/months"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
+import { useI18n } from "@/lib/i18n"
 import type { Expense, PaymentMethod } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
@@ -110,6 +111,7 @@ export default function ExpensesPage() {
 function ExpensesContent() {
   const { state, addExpense, updateExpense, deleteExpense, importExpenses } = useStore()
   const { toast } = useToast()
+  const { t } = useI18n()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchParams = useSearchParams()
 
@@ -323,19 +325,19 @@ function ExpensesContent() {
     const parsedAmount = parseAmount(form.amount)
     // say exactly what's missing instead of silently doing nothing
     if (!form.category_id) {
-      toast({ title: "Select a category", description: "The expense needs a category.", variant: "destructive" })
+      toast({ title: t("Select a category"), description: t("The expense needs a category."), variant: "destructive" })
       return
     }
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({ title: "Enter a valid amount", description: "The amount must be a number greater than zero.", variant: "destructive" })
+      toast({ title: t("Enter a valid amount"), description: t("The amount must be a number greater than zero."), variant: "destructive" })
       return
     }
     if (!form.date) {
-      toast({ title: "Pick a date", description: "The expense date is required.", variant: "destructive" })
+      toast({ title: t("Pick a date"), description: t("The expense date is required."), variant: "destructive" })
       return
     }
     if (!form.vendor) {
-      toast({ title: "Enter a vendor", description: "Say who was paid — pick a person or type a name.", variant: "destructive" })
+      toast({ title: t("Enter a vendor"), description: t("Say who was paid — pick a person or type a name."), variant: "destructive" })
       return
     }
 
@@ -416,13 +418,13 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       .writeText(EXPENSES_CSV_PROMPT)
       .then(() =>
         toast({
-          title: "Prompt copied",
-          description: "Paste it to an AI with your raw data to get an import-ready CSV.",
+          title: t("Prompt copied"),
+          description: t("Paste it to an AI with your raw data to get an import-ready CSV."),
           variant: "success",
         })
       )
       .catch(() =>
-        toast({ title: "Copy failed", description: "Your browser blocked clipboard access.", variant: "destructive" })
+        toast({ title: t("Copy failed"), description: t("Your browser blocked clipboard access."), variant: "destructive" })
       )
   }
 
@@ -460,8 +462,8 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       }
       const n = await importExpenses(rows)
       toast({
-        title: "Import complete",
-        description: `${n} expenses imported${skipped ? `, ${skipped} rows skipped` : ""}`,
+        title: t("Import complete"),
+        description: t("{n} expenses imported", { n }) + (skipped ? t(", {n} rows skipped", { n: skipped }) : ""),
         variant: skipped && !n ? "destructive" : "success",
       })
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -472,7 +474,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
   if (!state.loaded) {
     return (
       <div className="flex items-center justify-center py-20">
-        <p className="text-muted-foreground">Loading expenses...</p>
+        <p className="text-muted-foreground">{t("Loading expenses...")}</p>
       </div>
     )
   }
@@ -482,27 +484,27 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       {/* Page header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("Expenses")}</h1>
           <p className="text-sm text-muted-foreground">
-            Track and manage building expenses
+            {t("Track and manage building expenses")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={openAddDialog}>
             <Plus className="h-4 w-4" />
-            Add Expense
+            {t("Add Expense")}
           </Button>
           <Button variant="outline" onClick={exportExpensesCsv}>
             <Download className="h-4 w-4" />
-            Export CSV
+            {t("Export CSV")}
           </Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4" />
-            Import CSV
+            {t("Import CSV")}
           </Button>
-          <Button variant="outline" onClick={copyExpensesCsvPrompt} title="Copy an AI prompt that converts your raw data into an import-ready CSV">
+          <Button variant="outline" onClick={copyExpensesCsvPrompt} title={t("Copy an AI prompt that converts your raw data into an import-ready CSV")}>
             <ClipboardCopy className="h-4 w-4" />
-            Copy CSV Prompt
+            {t("Copy CSV Prompt")}
           </Button>
           <input
             ref={fileInputRef}
@@ -519,17 +521,17 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              Category
+              {t("Category")}
             </Label>
             <Select value={filterCategory} onValueChange={setFilterCategory}>
               <SelectTrigger>
-                <SelectValue placeholder="All Categories" />
+                <SelectValue placeholder={t("All Categories")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
+                <SelectItem value="all">{t("All Categories")}</SelectItem>
                 {state.categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
-                    {cat.name}
+                    {t(cat.name)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -538,7 +540,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
           <div className="min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              Start Date
+              {t("Start Date")}
             </Label>
             <Input
               type="date"
@@ -549,7 +551,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
           <div className="min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              End Date
+              {t("End Date")}
             </Label>
             <Input
               type="date"
@@ -560,17 +562,17 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
           <div className="min-w-0">
             <Label className="mb-1.5 block text-xs text-muted-foreground">
-              Method
+              {t("Method")}
             </Label>
             <Select value={filterMethod} onValueChange={setFilterMethod}>
               <SelectTrigger>
-                <SelectValue placeholder="All Methods" />
+                <SelectValue placeholder={t("All Methods")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">{t("All")}</SelectItem>
                 {PAYMENT_METHODS.map((m) => (
                   <SelectItem key={m.value} value={m.value}>
-                    {m.label}
+                    {t(m.label)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -579,7 +581,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
           {filtersActive && (
             <Button variant="ghost" onClick={resetFilters} className="shrink-0">
-              <RotateCcw className="mr-1 h-4 w-4" /> Reset Filters
+              <RotateCcw className="mr-1 h-4 w-4" /> {t("Reset Filters")}
             </Button>
           )}
         </div>
@@ -587,12 +589,11 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         {/* staff working under the selected category */}
         {filterCategoryPeople.length > 0 && (
           <p className="mt-3 text-xs text-muted-foreground">
-            {filterCategoryPeople.length}{" "}
-            {filterCategoryPeople.length === 1 ? "person works" : "people work"} under{" "}
+            {t("{n} staff under", { n: filterCategoryPeople.length })}{" "}
             <span className="capitalize font-medium text-foreground">
-              {getCategoryName(filterCategory)}
+              {t(getCategoryName(filterCategory))}
             </span>
-            : {filterCategoryPeople.map((p) => p.name).join(", ")} — manage them in Building Setup.
+            : {filterCategoryPeople.map((p) => p.name).join(", ")} — {t("manage them in Building Setup.")}
           </p>
         )}
       </div>
@@ -602,21 +603,18 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Repeat className="h-4 w-4" /> Recurring Expenses
+              <Repeat className="h-4 w-4" /> {t("Recurring Expenses")}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              One row per recurring expense — it follows the filters above.
-              Non-monthly schedules skip the months in between; edit the first
-              entry&apos;s date to shift the starting month. C = paid in cash,
-              B = by bank.
+              {t("One row per recurring expense — it follows the filters above. Non-monthly schedules skip the months in between; edit the first entry's date to shift the starting month. C = paid in cash, B = by bank.")}
             </p>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label="Previous year">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label={t("Previous year")}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-semibold tabular-nums">{gridYear}</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label="Next year">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label={t("Next year")}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -626,28 +624,28 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-card">Expense</TableHead>
+                  <TableHead className="sticky left-0 bg-card">{t("Expense")}</TableHead>
                   {MONTH_LABELS.map((m) => (
                     <TableHead key={m} className="text-center px-1">{m}</TableHead>
                   ))}
-                  <TableHead className="text-right">Spent {gridYear}</TableHead>
+                  <TableHead className="text-right">{t("Spent")} {gridYear}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recurringSeries.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
-                      No recurring expenses yet — switch on &quot;Recurring&quot; when adding an expense
+                      {t("No recurring expenses yet — switch on \u201cRecurring\u201d when adding an expense")}
                     </TableCell>
                   </TableRow>
                 ) : (
                   recurringSeries.map((s) => (
                     <TableRow key={`${s.categoryId}|${s.vendor}`}>
                       <TableCell className="sticky left-0 bg-card whitespace-nowrap">
-                        <div className="font-medium capitalize">{s.categoryName}</div>
+                        <div className="font-medium capitalize">{t(s.categoryName)}</div>
                         <div className="text-xs text-muted-foreground">
                           {s.vendor} · {formatCurrency(s.amount)} ·{" "}
-                          {RECURRING_INTERVALS.find((r) => r.value === s.interval)?.label.toLowerCase() ?? `every ${s.interval} months`}
+                          {t(RECURRING_INTERVALS.find((r) => r.value === s.interval)?.label ?? `Every ${s.interval} months`).toLowerCase()}
                         </div>
                       </TableCell>
                       {Array.from({ length: 12 }, (_, i) => {
@@ -675,10 +673,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             </Table>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-emerald-500" /> Paid</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-red-500" /> Not paid</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted border border-border" /> Not due yet</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted/30" /> Not scheduled</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-emerald-500" /> {t("Paid")}</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-red-500" /> {t("Not paid")}</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted border border-border" /> {t("Not due yet")}</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted/30" /> {t("Not scheduled")}</span>
           </div>
         </CardContent>
       </Card>
@@ -694,25 +692,25 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                     className="inline-flex items-center gap-1 hover:text-foreground"
                     onClick={() => toggleSort("date")}
                   >
-                    Date
+                    {t("Date")}
                     <ArrowUpDown className="h-3.5 w-3.5" />
                   </button>
                 </TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Vendor</TableHead>
+                <TableHead>{t("Category")}</TableHead>
+                <TableHead>{t("Vendor")}</TableHead>
                 <TableHead>
                   <button
                     className="inline-flex items-center gap-1 hover:text-foreground"
                     onClick={() => toggleSort("amount")}
                   >
-                    Amount
+                    {t("Amount")}
                     <ArrowUpDown className="h-3.5 w-3.5" />
                   </button>
                 </TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Recurring</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead className="w-[80px]">Actions</TableHead>
+                <TableHead>{t("Method")}</TableHead>
+                <TableHead>{t("Recurring")}</TableHead>
+                <TableHead>{t("Notes")}</TableHead>
+                <TableHead className="w-[80px]">{t("Actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -722,7 +720,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                     colSpan={8}
                     className="py-10 text-center text-muted-foreground"
                   >
-                    No expenses found
+                    {t("No expenses found")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -732,7 +730,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       {formatDate(expense.date)}
                     </TableCell>
                     <TableCell className="capitalize">
-                      {getCategoryName(expense.category_id)}
+                      {t(getCategoryName(expense.category_id))}
                     </TableCell>
                     <TableCell>{expense.vendor}</TableCell>
                     <TableCell className="whitespace-nowrap font-medium">
@@ -744,7 +742,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                           expense.method === "cash" ? "outline" : "secondary"
                         }
                       >
-                        {expense.method === "cash" ? "Cash" : "Bank"}
+                        {expense.method === "cash" ? t("Cash") : t("Bank")}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -752,10 +750,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                         <Badge variant="secondary" className="whitespace-nowrap">
                           <Repeat className="mr-1 h-3 w-3" />
                           {(expense.recurring_interval ?? 1) === 1
-                            ? "Monthly"
+                            ? t("Monthly")
                             : (expense.recurring_interval ?? 1) === 12
-                            ? "Yearly"
-                            : `Every ${expense.recurring_interval} mo`}
+                            ? t("Yearly")
+                            : t("Every {n} mo", { n: expense.recurring_interval ?? 1 })}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -770,7 +768,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                           variant="ghost"
                           size="icon"
                           onClick={() => openEditDialog(expense)}
-                          aria-label="Edit expense"
+                          aria-label={t("Edit expense")}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -778,7 +776,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                           variant="ghost"
                           size="icon"
                           onClick={() => setDeleteId(expense.id)}
-                          aria-label="Delete expense"
+                          aria-label={t("Delete expense")}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -797,18 +795,18 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingExpense ? "Edit Expense" : "Add Expense"}
+              {editingExpense ? t("Edit Expense") : t("Add Expense")}
             </DialogTitle>
             <DialogDescription>
               {editingExpense
-                ? "Update the expense details below."
-                : "Fill in the details to record a new expense."}
+                ? t("Update the expense details below.")
+                : t("Fill in the details to record a new expense.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
+                <Label htmlFor="category">{t("Category")}</Label>
                 <Select
                   value={form.category_id}
                   onValueChange={(val) => {
@@ -823,25 +821,25 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   }}
                 >
                   <SelectTrigger id="category">
-                    <SelectValue placeholder="Select category" />
+                    <SelectValue placeholder={t("Select category")} />
                   </SelectTrigger>
                   <SelectContent>
                     {state.categories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
+                        {t(cat.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {formPeople.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    {formPeople.length} {formPeople.length === 1 ? "person works" : "people work"} under this category
+                    {t("{n} staff under this category", { n: formPeople.length })}
                   </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+                <Label htmlFor="amount">{t("Amount")}</Label>
                 <Input
                   id="amount"
                   type="text"
@@ -856,7 +854,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="method">Method</Label>
+                <Label htmlFor="method">{t("Method")}</Label>
                 <Select
                   value={form.method}
                   onValueChange={(val) =>
@@ -867,12 +865,12 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   }
                 >
                   <SelectTrigger id="method">
-                    <SelectValue placeholder="Select method" />
+                    <SelectValue placeholder={t("Select method")} />
                   </SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map((m) => (
                       <SelectItem key={m.value} value={m.value}>
-                        {m.label}
+                        {t(m.label)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -880,7 +878,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="date">Date</Label>
+                <Label htmlFor="date">{t("Date")}</Label>
                 <Input
                   id="date"
                   type="date"
@@ -893,7 +891,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </div>
 
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="vendor">Vendor</Label>
+                <Label htmlFor="vendor">{t("Vendor")}</Label>
                 {formPeople.length > 0 ? (
                   <>
                     <Select
@@ -909,7 +907,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       }}
                     >
                       <SelectTrigger id="vendor">
-                        <SelectValue placeholder={`Pick from ${getCategoryName(form.category_id)} staff`} />
+                        <SelectValue placeholder={t("Pick from {category} staff", { category: t(getCategoryName(form.category_id)) })} />
                       </SelectTrigger>
                       <SelectContent>
                         {formPeople.map((p) => (
@@ -917,12 +915,12 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                             {p.name}
                           </SelectItem>
                         ))}
-                        <SelectItem value={CUSTOM_VENDOR}>Other (type manually)</SelectItem>
+                        <SelectItem value={CUSTOM_VENDOR}>{t("Other (type manually)")}</SelectItem>
                       </SelectContent>
                     </Select>
                     {customVendor && (
                       <Input
-                        placeholder="e.g. ABC Maintenance"
+                        placeholder={t("e.g. ABC Maintenance")}
                         value={form.vendor}
                         onChange={(e) =>
                           setForm((f) => ({ ...f, vendor: e.target.value }))
@@ -934,7 +932,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 ) : (
                   <Input
                     id="vendor"
-                    placeholder="e.g. ABC Maintenance"
+                    placeholder={t("e.g. ABC Maintenance")}
                     value={form.vendor}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, vendor: e.target.value }))
@@ -947,9 +945,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <div className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Recurring</Label>
+                    <Label>{t("Recurring")}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Automatically add this expense again on a schedule
+                      {t("Automatically add this expense again on a schedule")}
                     </p>
                   </div>
                   <Switch
@@ -961,7 +959,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 </div>
                 {form.recurring && (
                   <div className="space-y-1">
-                    <Label className="text-xs">Repeats</Label>
+                    <Label className="text-xs">{t("Repeats")}</Label>
                     <Select
                       value={String(form.recurring_interval)}
                       onValueChange={(v) =>
@@ -971,22 +969,22 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {RECURRING_INTERVALS.map((r) => (
-                          <SelectItem key={r.value} value={String(r.value)}>{r.label}</SelectItem>
+                          <SelectItem key={r.value} value={String(r.value)}>{t(r.label)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Starts from this expense&apos;s date and shows in the Recurring Expenses grid above.
+                      {t("Starts from this expense's date and shows in the Recurring Expenses grid above.")}
                     </p>
                   </div>
                 )}
               </div>
 
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="notes">Notes (optional)</Label>
+                <Label htmlFor="notes">{t("Notes (optional)")}</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Additional details..."
+                  placeholder={t("Additional details...")}
                   value={form.notes}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, notes: e.target.value }))
@@ -1002,10 +1000,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
               >
-                Cancel
+                {t("Cancel")}
               </Button>
               <Button type="submit">
-                {editingExpense ? "Save Changes" : "Add Expense"}
+                {editingExpense ? t("Save Changes") : t("Add Expense")}
               </Button>
             </DialogFooter>
           </form>
@@ -1016,18 +1014,17 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Expense</DialogTitle>
+            <DialogTitle>{t("Delete Expense")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this expense? This action cannot be
-              undone.
+              {t("Are you sure you want to delete this expense? This action cannot be undone.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Delete
+              {t("Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -33,6 +33,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { parseAmount } from "@/lib/csv"
 import { monthKey, addMonthsToKey, monthsBetween, monthKeyLabel, firstDayOfMonth, lastDayOfMonth } from "@/lib/months"
 import { useToast } from "@/components/ui/use-toast"
+import { useI18n } from "@/lib/i18n"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -175,6 +176,7 @@ function DashboardSkeleton() {
 export default function DashboardPage() {
   const { state, addTransfer, deleteTransfer } = useStore()
   const { toast } = useToast()
+  const { t } = useI18n()
   const {
     dashboardStats,
     dashboardPayments,
@@ -197,7 +199,7 @@ export default function DashboardPage() {
   const [transferNotes, setTransferNotes] = useState("")
 
   const range = resolveRange(period, customStart, customEnd)
-  const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? ""
+  const periodLabel = t(PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "")
 
   // everything the selected period covers, derived from the same
   // dashboard-visible payments the balance cards use
@@ -260,11 +262,11 @@ export default function DashboardPage() {
   function handleTransfer() {
     const amount = parseAmount(transferAmount)
     if (isNaN(amount) || amount <= 0) {
-      toast({ title: "Enter a valid amount", description: "The transfer amount must be greater than zero.", variant: "destructive" })
+      toast({ title: t("Enter a valid amount"), description: t("The transfer amount must be greater than zero."), variant: "destructive" })
       return
     }
     if (!transferDate) {
-      toast({ title: "Pick a date", description: "The transfer needs a date.", variant: "destructive" })
+      toast({ title: t("Pick a date"), description: t("The transfer needs a date."), variant: "destructive" })
       return
     }
     const fromMethod = transferDirection === "cash_to_bank" ? "cash" : "bank"
@@ -277,8 +279,8 @@ export default function DashboardPage() {
       notes: transferNotes,
     })
     toast({
-      title: "Transfer recorded",
-      description: `${formatCurrency(amount)} moved from ${fromMethod} to ${toMethod}.`,
+      title: t("Transfer recorded"),
+      description: t("{amount} moved from {from} to {to}.", { amount: formatCurrency(amount), from: t(fromMethod), to: t(toMethod) }),
       variant: "success",
     })
     setTransferAmount("")
@@ -288,7 +290,7 @@ export default function DashboardPage() {
   // each card links to the page (with filters preset) that explains its number
   const kpiCards = [
     {
-      label: "Cash on Hand",
+      label: t("Cash on Hand"),
       value: dashboardStats.cash_on_hand,
       icon: Wallet,
       color: "text-emerald-600 dark:text-emerald-400",
@@ -296,7 +298,7 @@ export default function DashboardPage() {
       href: "/apartments?method=cash",
     },
     {
-      label: "Bank Balance",
+      label: t("Bank Balance"),
       value: dashboardStats.bank_balance,
       icon: Landmark,
       color: "text-blue-600 dark:text-blue-400",
@@ -304,7 +306,7 @@ export default function DashboardPage() {
       href: "/apartments?method=bank",
     },
     {
-      label: "Total Balance",
+      label: t("Total Balance"),
       value: dashboardStats.total_balance,
       icon: DollarSign,
       color: "text-violet-600 dark:text-violet-400",
@@ -312,7 +314,7 @@ export default function DashboardPage() {
       href: "/apartments",
     },
     {
-      label: `Collected — ${periodLabel}`,
+      label: `${t("Collected")} — ${periodLabel}`,
       value: periodStats.collected,
       icon: TrendingUp,
       color: "text-green-600 dark:text-green-400",
@@ -320,7 +322,7 @@ export default function DashboardPage() {
       href: "/apartments",
     },
     {
-      label: `Spent — ${periodLabel}`,
+      label: `${t("Spent")} — ${periodLabel}`,
       value: periodStats.spent,
       icon: TrendingDown,
       color: "text-red-600 dark:text-red-400",
@@ -330,10 +332,10 @@ export default function DashboardPage() {
   ]
 
   const occupancyItems = [
-    { label: "Active", count: occupancyBreakdown.active, color: "bg-green-500" },
-    { label: "MIA", count: occupancyBreakdown.mia, color: "bg-red-500" },
-    { label: "Traveling (Paying)", count: occupancyBreakdown.traveling_but_paying, color: "bg-yellow-500" },
-    { label: "Unregistered", count: occupancyBreakdown.unregistered, color: "bg-gray-400" },
+    { label: t("Active"), count: occupancyBreakdown.active, color: "bg-green-500" },
+    { label: t("MIA"), count: occupancyBreakdown.mia, color: "bg-red-500" },
+    { label: t("Traveling (Paying)"), count: occupancyBreakdown.traveling_but_paying, color: "bg-yellow-500" },
+    { label: t("Unregistered"), count: occupancyBreakdown.unregistered, color: "bg-gray-400" },
   ]
   const occupancyTotal = occupancyItems.reduce((s, item) => s + item.count, 0)
 
@@ -356,15 +358,15 @@ export default function DashboardPage() {
       {/* Page header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("Dashboard")}</h1>
           <p className="text-muted-foreground">
             {state.settings.building_name
-              ? `${state.settings.building_name} — finance overview`
-              : "Building finance overview"}
+              ? `${state.settings.building_name} — ${t("finance overview")}`
+              : t("Building finance overview")}
           </p>
         </div>
         <Button variant="outline" onClick={() => setTransferOpen(true)}>
-          <ArrowLeftRight className="mr-1 h-4 w-4" /> Transfer Cash ↔ Bank
+          <ArrowLeftRight className="mr-1 h-4 w-4" /> {t("Transfer Cash ↔ Bank")}
         </Button>
       </div>
 
@@ -373,12 +375,12 @@ export default function DashboardPage() {
         <CardContent className="pt-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="min-w-[180px]">
-              <Label className="mb-1.5 block text-xs text-muted-foreground">Period</Label>
+              <Label className="mb-1.5 block text-xs text-muted-foreground">{t("Period")}</Label>
               <Select value={period} onValueChange={(v) => setPeriod(v as PeriodPreset)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PERIOD_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -386,20 +388,20 @@ export default function DashboardPage() {
             {period === "custom" && (
               <>
                 <div className="min-w-0">
-                  <Label className="mb-1.5 block text-xs text-muted-foreground">From</Label>
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">{t("From")}</Label>
                   <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
                 </div>
                 <div className="min-w-0">
-                  <Label className="mb-1.5 block text-xs text-muted-foreground">To</Label>
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">{t("To")}</Label>
                   <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
                 </div>
               </>
             )}
             <p className="text-xs text-muted-foreground pb-2">
               {range.start || range.end
-                ? `Showing ${range.start ? formatDate(range.start) : "the beginning"} – ${range.end ? formatDate(range.end) : "today"}`
-                : "Showing all recorded data"}
-              . Balance cards always show current totals.
+                ? t("Showing {from} – {to}", { from: range.start ? formatDate(range.start) : t("the beginning"), to: range.end ? formatDate(range.end) : t("today") })
+                : t("Showing all recorded data")}
+              {" · "}{t("Balance cards always show current totals.")}
             </p>
           </div>
         </CardContent>
@@ -434,9 +436,9 @@ export default function DashboardPage() {
         {/* Occupancy Breakdown */}
         <Card>
           <CardHeader>
-            <CardTitle>Occupancy Breakdown</CardTitle>
+            <CardTitle>{t("Occupancy Breakdown")}</CardTitle>
             <CardDescription>
-              {occupancyTotal} total apartment{occupancyTotal !== 1 ? "s" : ""}
+              {t("{n} total apartments", { n: occupancyTotal })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -472,14 +474,14 @@ export default function DashboardPage() {
         {/* Budget vs Actual */}
         <Card>
           <CardHeader>
-            <CardTitle>Budget vs Actual (YTD)</CardTitle>
-            <CardDescription>Year-to-date income and expenditure</CardDescription>
+            <CardTitle>{t("Budget vs Actual (YTD)")}</CardTitle>
+            <CardDescription>{t("Year-to-date income and expenditure")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Income progress */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Income</span>
+                <span className="font-medium">{t("Income")}</span>
                 <span className="text-muted-foreground">
                   {formatCurrency(incomeActual)} / {formatCurrency(budgetVsActual.income.expected)}
                 </span>
@@ -491,16 +493,16 @@ export default function DashboardPage() {
                 />
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{incomePercent}% of target</span>
+                <span>{t("{p}% of target", { p: incomePercent })}</span>
                 <Badge variant={incomeOver ? "success" : "secondary"} className="text-xs">
-                  {incomeOver ? "Over target" : "Under target"}
+                  {incomeOver ? t("Over target") : t("Under target")}
                 </Badge>
               </div>
             </div>
             {/* Expenditure progress */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Expenditure</span>
+                <span className="font-medium">{t("Expenditure")}</span>
                 <span className="text-muted-foreground">
                   {formatCurrency(expActual)} / {formatCurrency(budgetVsActual.expenditure.expected)}
                 </span>
@@ -512,9 +514,9 @@ export default function DashboardPage() {
                 />
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{expPercent}% of budget</span>
+                <span>{t("{p}% of budget", { p: expPercent })}</span>
                 <Badge variant={expOver ? "destructive" : "secondary"} className="text-xs">
-                  {expOver ? "Over budget" : "Under budget"}
+                  {expOver ? t("Over budget") : t("Under budget")}
                 </Badge>
               </div>
             </div>
@@ -527,8 +529,8 @@ export default function DashboardPage() {
         {/* Bar Chart: Monthly Income vs Expenses */}
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Income vs Expenses</CardTitle>
-            <CardDescription>{periodLabel} — month by month</CardDescription>
+            <CardTitle>{t("Monthly Income vs Expenses")}</CardTitle>
+            <CardDescription>{periodLabel} — {t("month by month")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -537,22 +539,25 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis
                     dataKey="month"
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     tickFormatter={(v: string) => v.split(" ")[0]}
                     className="text-muted-foreground"
                   />
-                  <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} className="text-muted-foreground" />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "8px",
                       fontSize: "12px",
+                      color: "var(--card-foreground)",
                     }}
+                    labelStyle={{ color: "var(--muted-foreground)" }}
+                    itemStyle={{ color: "var(--card-foreground)" }}
                     formatter={(value) => formatCurrency(Number(value))}
                   />
-                  <Bar dataKey="income" fill="var(--chart-1)" radius={[4, 4, 0, 0]} name="Income" />
-                  <Bar dataKey="expenses" fill="var(--chart-4)" radius={[4, 4, 0, 0]} name="Expenses" />
+                  <Bar dataKey="income" fill="var(--chart-1)" radius={[4, 4, 0, 0]} name={t("Income")} />
+                  <Bar dataKey="expenses" fill="var(--chart-4)" radius={[4, 4, 0, 0]} name={t("Expenses")} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -562,8 +567,8 @@ export default function DashboardPage() {
         {/* Donut Chart: Expenses by Category */}
         <Card>
           <CardHeader>
-            <CardTitle>Expenses by Category</CardTitle>
-            <CardDescription>{periodLabel} breakdown</CardDescription>
+            <CardTitle>{t("Expenses by Category")}</CardTitle>
+            <CardDescription>{periodLabel} — {t("breakdown")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72 flex items-center">
@@ -589,17 +594,20 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
                         fontSize: "12px",
+                        color: "var(--card-foreground)",
                       }}
+                      labelStyle={{ color: "var(--muted-foreground)" }}
+                      itemStyle={{ color: "var(--card-foreground)" }}
                       formatter={(value) => formatCurrency(Number(value))}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="w-full text-center text-muted-foreground">No expenses in this period</p>
+                <p className="w-full text-center text-muted-foreground">{t("No expenses in this period")}</p>
               )}
             </div>
           </CardContent>
@@ -608,8 +616,8 @@ export default function DashboardPage() {
         {/* Line Chart: Running Balance */}
         <Card>
           <CardHeader>
-            <CardTitle>Running Balance</CardTitle>
-            <CardDescription>Cumulative balance over time (all data)</CardDescription>
+            <CardTitle>{t("Running Balance")}</CardTitle>
+            <CardDescription>{t("Cumulative balance over time (all data)")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -619,21 +627,24 @@ export default function DashboardPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis
                       dataKey="date"
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                       tickFormatter={(v: string) => {
                         const d = new Date(v)
                         return `${d.getMonth() + 1}/${d.getDate()}`
                       }}
                       className="text-muted-foreground"
                     />
-                    <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                    <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} className="text-muted-foreground" />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
                         fontSize: "12px",
+                        color: "var(--card-foreground)",
                       }}
+                      labelStyle={{ color: "var(--muted-foreground)" }}
+                      itemStyle={{ color: "var(--card-foreground)" }}
                       formatter={(value) => formatCurrency(Number(value))}
                       labelFormatter={(label) => {
                         const d = new Date(String(label))
@@ -656,7 +667,7 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               ) : (
                 <p className="flex h-full items-center justify-center text-muted-foreground">
-                  No data yet
+                  {t("No data yet")}
                 </p>
               )}
             </div>
@@ -666,9 +677,9 @@ export default function DashboardPage() {
         {/* Cash vs Bank in the selected period */}
         <Card>
           <CardHeader>
-            <CardTitle>Cash vs Bank — {periodLabel}</CardTitle>
+            <CardTitle>{t("Cash vs Bank")} — {periodLabel}</CardTitle>
             <CardDescription>
-              Collection method breakdown: {formatCurrency(cashBankTotal)} total
+              {t("Collection method breakdown:")} {formatCurrency(cashBankTotal)}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -698,7 +709,7 @@ export default function DashboardPage() {
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: "var(--chart-3)" }}
                     />
-                    <span className="text-sm text-muted-foreground">Cash</span>
+                    <span className="text-sm text-muted-foreground">{t("Cash")}</span>
                     <span className="text-sm font-semibold">
                       {formatCurrency(periodStats.cash)}
                     </span>
@@ -708,7 +719,7 @@ export default function DashboardPage() {
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: "var(--chart-5)" }}
                     />
-                    <span className="text-sm text-muted-foreground">Bank</span>
+                    <span className="text-sm text-muted-foreground">{t("Bank")}</span>
                     <span className="text-sm font-semibold">
                       {formatCurrency(periodStats.bank)}
                     </span>
@@ -716,7 +727,7 @@ export default function DashboardPage() {
                 </div>
               </>
             ) : (
-              <p className="py-8 text-center text-muted-foreground">No collections in this period</p>
+              <p className="py-8 text-center text-muted-foreground">{t("No collections in this period")}</p>
             )}
           </CardContent>
         </Card>
@@ -728,11 +739,10 @@ export default function DashboardPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <History className="h-5 w-5 text-muted-foreground" />
-              <CardTitle>Previous Years</CardTitle>
+              <CardTitle>{t("Previous Years")}</CardTitle>
             </div>
             <CardDescription>
-              Migrated yearly totals — edit them in Building Setup. Years with a
-              cash/bank split carry into the balance cards above.
+              {t("Migrated yearly totals — edit them in Building Setup. Years with a cash/bank split carry into the balance cards above.")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -740,12 +750,12 @@ export default function DashboardPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-3 pr-4 font-medium">Year</th>
-                    <th className="pb-3 pr-4 font-medium">Income</th>
-                    <th className="pb-3 pr-4 font-medium">Expenditure</th>
-                    <th className="pb-3 pr-4 font-medium">Net</th>
-                    <th className="pb-3 pr-4 font-medium">Carried to Balance</th>
-                    <th className="pb-3 font-medium">Expenditure Breakdown</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Year")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Income")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Expenditure")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Net")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Carried to Balance")}</th>
+                    <th className="pb-3 font-medium">{t("Expenditure Breakdown")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -766,7 +776,7 @@ export default function DashboardPage() {
                         <td className="py-3 pr-4">
                           {hasCarry ? (
                             <span className="whitespace-nowrap">
-                              {formatCurrency(carriedCash)} cash · {formatCurrency(carriedBank)} bank
+                              {formatCurrency(carriedCash)} {t("cash")} · {formatCurrency(carriedBank)} {t("bank")}
                             </span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
@@ -800,11 +810,10 @@ export default function DashboardPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            <CardTitle>Overdue Alerts</CardTitle>
+            <CardTitle>{t("Overdue Alerts")}</CardTitle>
           </div>
           <CardDescription>
-            {overdueAlerts.length} apartment{overdueAlerts.length !== 1 ? "s" : ""} requiring
-            attention
+            {t("{n} apartments requiring attention", { n: overdueAlerts.length })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -813,11 +822,11 @@ export default function DashboardPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-3 pr-4 font-medium">Unit</th>
-                    <th className="pb-3 pr-4 font-medium">Resident</th>
-                    <th className="pb-3 pr-4 font-medium">Days Overdue</th>
-                    <th className="pb-3 pr-4 font-medium">Amount Owed</th>
-                    <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Unit")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Resident")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Days Overdue")}</th>
+                    <th className="pb-3 pr-4 font-medium">{t("Amount Owed")}</th>
+                    <th className="pb-3 font-medium">{t("Status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -838,7 +847,7 @@ export default function DashboardPage() {
                             apt.days_overdue > 0 ? "font-semibold text-destructive" : ""
                           }
                         >
-                          {apt.days_overdue > 0 ? `${apt.days_overdue} days` : "Due soon"}
+                          {apt.days_overdue > 0 ? t("{n} days", { n: apt.days_overdue }) : t("Due soon")}
                         </span>
                       </td>
                       <td className="py-3 pr-4 font-medium">
@@ -850,7 +859,7 @@ export default function DashboardPage() {
                             apt.payment_status === "overdue" ? "destructive" : "warning"
                           }
                         >
-                          {apt.payment_status === "overdue" ? "Overdue" : "Due Soon"}
+                          {apt.payment_status === "overdue" ? t("Overdue") : t("Due Soon")}
                         </Badge>
                       </td>
                     </tr>
@@ -860,7 +869,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <p className="py-6 text-center text-muted-foreground">
-              All apartments are up to date
+              {t("All apartments are up to date")}
             </p>
           )}
         </CardContent>
@@ -870,29 +879,28 @@ export default function DashboardPage() {
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Transfer Between Cash and Bank</DialogTitle>
+            <DialogTitle>{t("Transfer Between Cash and Bank")}</DialogTitle>
             <DialogDescription>
-              Move money between the cash box and the bank account — the
-              balance cards update immediately.
+              {t("Move money between the cash box and the bank account — the balance cards update immediately.")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Direction</Label>
+                <Label>{t("Direction")}</Label>
                 <Select
                   value={transferDirection}
                   onValueChange={(v) => setTransferDirection(v as "cash_to_bank" | "bank_to_cash")}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash_to_bank">Cash → Bank (deposit)</SelectItem>
-                    <SelectItem value="bank_to_cash">Bank → Cash (withdrawal)</SelectItem>
+                    <SelectItem value="cash_to_bank">{t("Cash → Bank (deposit)")}</SelectItem>
+                    <SelectItem value="bank_to_cash">{t("Bank → Cash (withdrawal)")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Amount (LE)</Label>
+                <Label>{t("Amount (LE)")}</Label>
                 <Input
                   type="text"
                   inputMode="decimal"
@@ -903,39 +911,39 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Date</Label>
+              <Label>{t("Date")}</Label>
               <Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Notes (optional)</Label>
+              <Label>{t("Notes (optional)")}</Label>
               <Input
-                placeholder="e.g. monthly bank deposit"
+                placeholder={t("e.g. monthly bank deposit")}
                 value={transferNotes}
                 onChange={(e) => setTransferNotes(e.target.value)}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Current: {formatCurrency(dashboardStats.cash_on_hand)} cash ·{" "}
-              {formatCurrency(dashboardStats.bank_balance)} bank
+              {t("Current:")} {formatCurrency(dashboardStats.cash_on_hand)} {t("cash")} ·{" "}
+              {formatCurrency(dashboardStats.bank_balance)} {t("bank")}
             </p>
 
             {state.transfers.length > 0 && (
               <div className="space-y-1.5 border-t border-border pt-3">
-                <p className="text-sm font-medium">Recent transfers</p>
-                {state.transfers.slice(0, 6).map((t) => (
-                  <div key={t.id} className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground whitespace-nowrap">{formatDate(t.date)}</span>
-                    <span className="font-medium whitespace-nowrap">{formatCurrency(t.amount)}</span>
+                <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                {state.transfers.slice(0, 6).map((tr) => (
+                  <div key={tr.id} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground whitespace-nowrap">{formatDate(tr.date)}</span>
+                    <span className="font-medium whitespace-nowrap">{formatCurrency(tr.amount)}</span>
                     <span className="text-muted-foreground truncate">
-                      {t.from_method} → {t.to_method}
-                      {t.notes ? ` · ${t.notes}` : ""}
+                      {t(tr.from_method)} → {t(tr.to_method)}
+                      {tr.notes ? ` · ${tr.notes}` : ""}
                     </span>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="ml-auto h-7 w-7 shrink-0"
-                      onClick={() => deleteTransfer(t.id)}
-                      aria-label="Delete transfer"
+                      onClick={() => deleteTransfer(tr.id)}
+                      aria-label={t("Delete transfer")}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
@@ -945,9 +953,9 @@ export default function DashboardPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTransferOpen(false)}>Close</Button>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>{t("Close")}</Button>
             <Button onClick={handleTransfer}>
-              <ArrowLeftRight className="mr-1 h-4 w-4" /> Record Transfer
+              <ArrowLeftRight className="mr-1 h-4 w-4" /> {t("Record Transfer")}
             </Button>
           </DialogFooter>
         </DialogContent>

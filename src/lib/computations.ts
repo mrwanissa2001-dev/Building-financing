@@ -24,9 +24,14 @@ import type {
 // advances one month for every full monthly_due_amount received. A
 // payment of 500 against a due of 1000 covers nothing until the other
 // 500 arrives — partial payments can never mark a month as paid.
+//
+// When no monthly due is configured the money engine has nothing to
+// divide by, so coverage falls back to the months payments explicitly
+// claim (period_start..period_end) — otherwise recorded payments would
+// be invisible in the grids.
 
 export interface ApartmentCoverage {
-  // first tracked month, null when no monthly due is configured
+  // first tracked month, null when nothing is tracked
   startKey: string | null
   totalPaid: number
   // whole months covered by the money received
@@ -38,6 +43,9 @@ export interface ApartmentCoverage {
   amountOwed: number
   status: PaymentStatus
   daysOverdue: number
+  // set only in claims mode (no monthly due configured): the exact
+  // months payments say they cover, gaps allowed
+  claimedMonths: Set<string> | null
 }
 
 export function computeCoverage(
@@ -52,17 +60,9 @@ export function computeCoverage(
   const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
 
   if (!due || due <= 0) {
-    // no monthly due configured — nothing is owed, nothing is tracked
-    return {
-      startKey: null,
-      totalPaid,
-      fullMonthsPaid: 0,
-      lastPaidMonth: null,
-      nextUnpaidMonth: null,
-      amountOwed: 0,
-      status: 'paid',
-      daysOverdue: 0,
-    }
+    // no monthly due configured — fall back to the months the payments
+    // themselves claim to cover so they still show up
+    return computeClaimedCoverage(payments, totalPaid, now)
   }
 
   // earliest month any payment refers to; fallback to the month the
@@ -114,6 +114,78 @@ export function computeCoverage(
     amountOwed,
     status,
     daysOverdue,
+    claimedMonths: null,
+  }
+}
+
+// Claims-mode coverage for apartments without a monthly due: months are
+// paid exactly when a payment says it covers them. The amount owed
+// cannot be computed (there is no due to multiply), so it stays 0 and
+// the status only reflects whether the claims have lapsed.
+function computeClaimedCoverage(
+  payments: Payment[],
+  totalPaid: number,
+  now: Date
+): ApartmentCoverage {
+  const claimed = new Set<string>()
+  for (const p of payments) {
+    const start = monthKeyOrNull(p.period_start)
+    if (!start) continue
+    const end = monthKeyOrNull(p.period_end) ?? start
+    let k = start
+    let guard = 0
+    while (k <= end && guard < 120) {
+      claimed.add(k)
+      k = addMonthsToKey(k, 1)
+      guard++
+    }
+  }
+
+  if (claimed.size === 0) {
+    return {
+      startKey: null,
+      totalPaid,
+      fullMonthsPaid: 0,
+      lastPaidMonth: null,
+      nextUnpaidMonth: null,
+      amountOwed: 0,
+      status: 'paid',
+      daysOverdue: 0,
+      claimedMonths: null,
+    }
+  }
+
+  const keys = [...claimed].sort()
+  const startKey = keys[0]
+  const lastPaidMonth = keys[keys.length - 1]
+  const nextUnpaidMonth = addMonthsToKey(lastPaidMonth, 1)
+  const currentKey = monthKey(now)
+  const monthsBehind = Math.max(0, monthsBetween(lastPaidMonth, currentKey))
+
+  let status: PaymentStatus
+  if (monthsBehind <= 0) status = 'paid'
+  else if (monthsBehind === 1) status = 'due_soon'
+  else status = 'overdue'
+
+  let daysOverdue = 0
+  if (status === 'overdue') {
+    const firstUnpaid = new Date(firstDayOfMonth(nextUnpaidMonth))
+    daysOverdue = Math.max(
+      0,
+      Math.floor((now.getTime() - firstUnpaid.getTime()) / 86_400_000)
+    )
+  }
+
+  return {
+    startKey,
+    totalPaid,
+    fullMonthsPaid: claimed.size,
+    lastPaidMonth,
+    nextUnpaidMonth,
+    amountOwed: 0,
+    status,
+    daysOverdue,
+    claimedMonths: claimed,
   }
 }
 
@@ -127,6 +199,12 @@ export function computeMonthCell(
 ): MonthCellStatus {
   if (!coverage.startKey) return 'na'
   if (key < coverage.startKey) return 'na'
+  if (coverage.claimedMonths) {
+    // claims mode: exactly the claimed months are paid, gaps allowed
+    if (coverage.claimedMonths.has(key)) return 'paid'
+    if (key <= monthKey(now)) return 'due'
+    return 'future'
+  }
   if (coverage.lastPaidMonth && key <= coverage.lastPaidMonth) return 'paid'
   if (key <= monthKey(now)) return 'due'
   return 'future'
