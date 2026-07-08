@@ -1,5 +1,9 @@
 import type { OccupancyStatus, PaymentMethod, PayerRelation } from './types'
 
+// Shown in the sidebar so anyone can tell at a glance which build a
+// deployment is serving. Bump on every released change.
+export const APP_VERSION = 'v2.5'
+
 // Floors derived from the building setup: mezzanine M1..Mn, then 1..N
 export function buildingFloors(mezzanineFloors: number, numFloors: number): string[] {
   const mezz = Math.max(0, Math.min(mezzanineFloors || 0, 5))

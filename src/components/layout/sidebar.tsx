@@ -4,6 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
+import { useI18n } from "@/lib/i18n"
+import { APP_VERSION } from "@/lib/constants"
 import {
   LayoutDashboard,
   Building2,
@@ -32,14 +34,15 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { state } = useStore()
+  const { t } = useI18n()
   const buildingName = state.settings.building_name
 
   return (
     <>
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 rounded-lg bg-card p-2 shadow-md lg:hidden"
-        aria-label="Open menu"
+        className="fixed top-4 left-4 rtl:left-auto rtl:right-4 z-50 rounded-lg bg-card p-2 shadow-md lg:hidden"
+        aria-label={t("Open menu")}
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -53,8 +56,10 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+          // hidden/flex instead of translate so the RTL variant can't
+          // fight the lg: breakpoint and strand the sidebar off-screen
+          "fixed inset-y-0 left-0 rtl:left-auto rtl:right-0 z-50 w-64 flex-col border-r rtl:border-r-0 rtl:border-l border-sidebar-border bg-sidebar",
+          mobileOpen ? "flex" : "hidden lg:flex"
         )}
       >
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-6">
@@ -67,7 +72,7 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
           <button
             onClick={() => setMobileOpen(false)}
             className="rounded-lg p-1 hover:bg-sidebar-accent lg:hidden"
-            aria-label="Close menu"
+            aria-label={t("Close menu")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -92,13 +97,13 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
                 )}
               >
                 <item.icon className="h-5 w-5" />
-                {item.label}
+                {t(item.label)}
               </Link>
             )
           })}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4">
+        <div className="border-t border-sidebar-border p-4 space-y-2">
           <button
             onClick={toggleTheme}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
@@ -108,8 +113,10 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
             ) : (
               <Moon className="h-5 w-5" />
             )}
-            {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            {theme === "dark" ? t("Light Mode") : t("Dark Mode")}
           </button>
+          {/* version stamp so it's obvious which build is deployed */}
+          <p className="px-3 text-[10px] text-muted-foreground">BuildFin {APP_VERSION}</p>
         </div>
       </aside>
     </>

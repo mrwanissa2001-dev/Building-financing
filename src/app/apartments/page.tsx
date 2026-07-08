@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
+import { useI18n } from "@/lib/i18n"
 import {
   Dialog,
   DialogContent,
@@ -159,6 +160,7 @@ function ApartmentsContent() {
   const { state, addApartment, updateApartment, deleteApartment, addPayment, updatePayment, deletePayment, importPayments } = useStore()
   const { apartmentsWithStatus, getPaymentsForApartment, getMonthCells, getCoverage } = useComputed()
   const { toast } = useToast()
+  const { t } = useI18n()
 
   const searchParams = useSearchParams()
 
@@ -362,16 +364,16 @@ function ApartmentsContent() {
     const due = parseAmount(aptForm.monthly_due_amount)
     if (!aptForm.unit_number || !aptForm.primary_resident_name || isNaN(due)) {
       toast({
-        title: "Missing apartment details",
-        description: "Unit number, resident name, and a numeric monthly due are required.",
+        title: t("Missing apartment details"),
+        description: t("Unit number, resident name, and a numeric monthly due are required."),
         variant: "destructive",
       })
       return
     }
     if (state.apartments.some((a) => a.unit_number.trim().toLowerCase() === aptForm.unit_number.trim().toLowerCase())) {
       toast({
-        title: "Unit already exists",
-        description: `Unit ${aptForm.unit_number} is already registered — unit numbers must be unique.`,
+        title: t("Unit already exists"),
+        description: t("Unit {unit} is already registered — unit numbers must be unique.", { unit: aptForm.unit_number }),
         variant: "destructive",
       })
       return
@@ -381,8 +383,8 @@ function ApartmentsContent() {
     const buildingNo = Math.max(1, parseInt(aptForm.building_no, 10) || 1)
     if (!floors.includes(aptForm.floor)) {
       toast({
-        title: "Floor not available",
-        description: `Floor ${aptForm.floor} is outside the building structure configured in Building Setup.`,
+        title: t("Floor not available"),
+        description: t("Floor {floor} is outside the building structure configured in Building Setup.", { floor: aptForm.floor }),
         variant: "destructive",
       })
       return
@@ -394,8 +396,8 @@ function ApartmentsContent() {
       ).length
       if (onFloor >= perFloor) {
         toast({
-          title: "Floor is full",
-          description: `Floor ${aptForm.floor} already has ${onFloor} of ${perFloor} apartments allowed per floor (see Building Setup).`,
+          title: t("Floor is full"),
+          description: t("Floor {floor} already has {n} of {max} apartments allowed per floor (see Building Setup).", { floor: aptForm.floor, n: onFloor, max: perFloor }),
           variant: "destructive",
         })
         return
@@ -403,8 +405,8 @@ function ApartmentsContent() {
     }
     if (state.settings.total_apartments > 0 && state.apartments.length >= state.settings.total_apartments) {
       toast({
-        title: "Building is full",
-        description: `All ${state.settings.total_apartments} apartments are already registered (see Building Setup).`,
+        title: t("Building is full"),
+        description: t("All {n} apartments are already registered (see Building Setup).", { n: state.settings.total_apartments }),
         variant: "destructive",
       })
       return
@@ -474,19 +476,19 @@ function ApartmentsContent() {
 
     // say exactly what's missing instead of silently doing nothing
     if (!payForm.apartment_id) {
-      toast({ title: "Select an apartment", description: "The payment needs an apartment.", variant: "destructive" })
+      toast({ title: t("Select an apartment"), description: t("The payment needs an apartment."), variant: "destructive" })
       return
     }
     if (isNaN(amount) || amount <= 0) {
-      toast({ title: "Enter a valid amount", description: "The amount must be a number greater than zero.", variant: "destructive" })
+      toast({ title: t("Enter a valid amount"), description: t("The amount must be a number greater than zero."), variant: "destructive" })
       return
     }
     if (!payForm.date_paid) {
-      toast({ title: "Pick a payment date", description: "The date paid is required.", variant: "destructive" })
+      toast({ title: t("Pick a payment date"), description: t("The date paid is required."), variant: "destructive" })
       return
     }
     if (!payForm.extra && !isValidMonthKey(payForm.from_month)) {
-      toast({ title: "Pick the first month paid", description: "Choose which month this payment covers, or switch on “Extra payment” for money not tied to months.", variant: "destructive" })
+      toast({ title: t("Pick the first month paid"), description: t("Choose which month this payment covers, or switch on “Extra payment” for money not tied to months."), variant: "destructive" })
       return
     }
 
@@ -514,6 +516,17 @@ function ApartmentsContent() {
     } else {
       addPayment(fields)
     }
+
+    // without a monthly due the coverage engine can't compute owed
+    // amounts — nudge once per save so the user knows why
+    const apt = state.apartments.find((a) => a.id === payForm.apartment_id)
+    if (apt && (!apt.monthly_due_amount || apt.monthly_due_amount <= 0) && !payForm.extra) {
+      toast({
+        title: t("Tip: set a monthly due amount"),
+        description: t("Unit {unit} has no monthly due, so paid months come from what each payment says it covers. Set a monthly due (open the apartment → Edit) to track owed amounts automatically.", { unit: apt.unit_number }),
+      })
+    }
+
     setPayDialogOpen(false)
     setEditingPayment(null)
     setPayForm(emptyPaymentForm)
@@ -586,13 +599,13 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       .writeText(PAYMENTS_CSV_PROMPT)
       .then(() =>
         toast({
-          title: "Prompt copied",
-          description: "Paste it to an AI with your raw data to get an import-ready CSV.",
+          title: t("Prompt copied"),
+          description: t("Paste it to an AI with your raw data to get an import-ready CSV."),
           variant: "success",
         })
       )
       .catch(() =>
-        toast({ title: "Copy failed", description: "Your browser blocked clipboard access.", variant: "destructive" })
+        toast({ title: t("Copy failed"), description: t("Your browser blocked clipboard access."), variant: "destructive" })
       )
   }
 
@@ -642,8 +655,8 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       }
       const n = importPayments(rows)
       toast({
-        title: "Import complete",
-        description: `${n} payments imported${skipped ? `, ${skipped} rows skipped` : ""}`,
+        title: t("Import complete"),
+        description: t("{n} payments imported", { n }) + (skipped ? t(", {n} rows skipped", { n: skipped }) : ""),
         variant: skipped && !n ? "destructive" : "success",
       })
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -662,11 +675,11 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
   const yearNav = (
     <div className="flex items-center gap-1">
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label="Previous year">
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label={t("Previous year")}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <span className="text-sm font-semibold tabular-nums">{gridYear}</span>
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label="Next year">
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label={t("Next year")}>
         <ChevronRight className="h-4 w-4" />
       </Button>
     </div>
@@ -674,9 +687,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
   const gridLegend = (
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-emerald-500" /> Paid</span>
-      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-red-500" /> Not paid</span>
-      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted border border-border" /> Not due yet</span>
+      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-emerald-500" /> {t("Paid")}</span>
+      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-red-500" /> {t("Not paid")}</span>
+      <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-muted border border-border" /> {t("Not due yet")}</span>
     </div>
   )
 
@@ -690,16 +703,16 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => { setSelectedId(null); setIsEditing(false); setEditData(null) }}>
-            <ArrowLeft className="mr-1 h-4 w-4" /> Back
+            <ArrowLeft className="mr-1 h-4 w-4" /> {t("Back")}
           </Button>
-          <h1 className="text-2xl font-bold">Unit {apt.unit_number}</h1>
-          {numBuildings > 1 && <Badge variant="outline">Building {apt.building_no ?? 1}</Badge>}
-          <Badge variant="outline">Floor {apt.floor}</Badge>
+          <h1 className="text-2xl font-bold">{t("Unit")} {apt.unit_number}</h1>
+          {numBuildings > 1 && <Badge variant="outline">{t("Building")} {apt.building_no ?? 1}</Badge>}
+          <Badge variant="outline">{t("Floor")} {apt.floor}</Badge>
           <Badge variant={occupancyBadgeVariant(apt.occupancy_status)}>
-            {OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}
+            {t(OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label ?? "")}
           </Badge>
           <Badge variant={statusBadgeVariant(apt.payment_status)}>
-            {apt.payment_status === "paid" ? "Paid" : apt.payment_status === "due_soon" ? "Due Soon" : "Overdue"}
+            {apt.payment_status === "paid" ? t("Paid") : apt.payment_status === "due_soon" ? t("Due Soon") : t("Overdue")}
           </Badge>
         </div>
 
@@ -707,27 +720,27 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           {/* Info Card */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Apartment Details</CardTitle>
+              <CardTitle>{t("Apartment Details")}</CardTitle>
               {!isEditing ? (
                 <Button variant="outline" size="sm" onClick={() => startEdit(apt)}>
-                  <Pencil className="mr-1 h-3 w-3" /> Edit
+                  <Pencil className="mr-1 h-3 w-3" /> {t("Edit")}
                 </Button>
               ) : (
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={saveEdit}>Save</Button>
-                  <Button variant="outline" size="sm" onClick={() => { setIsEditing(false); setEditData(null) }}>Cancel</Button>
+                  <Button size="sm" onClick={saveEdit}>{t("Save")}</Button>
+                  <Button variant="outline" size="sm" onClick={() => { setIsEditing(false); setEditData(null) }}>{t("Cancel")}</Button>
                 </div>
               )}
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Resident</p>
+                  <p className="text-sm text-muted-foreground">{t("Resident")}</p>
                   <p className="font-medium">{apt.primary_resident_name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Users className="h-3 w-3" /> Second Inhabitant
+                    <Users className="h-3 w-3" /> {t("Second Inhabitant")}
                   </p>
                   {editing ? (
                     <Input className="mt-1" value={editData!.secondary_resident_name} onChange={(e) => setEditData({ ...editData!, secondary_resident_name: e.target.value })} placeholder="Name" />
@@ -739,7 +752,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> Phone 1
+                    <Phone className="h-3 w-3" /> {t("Phone 1")}
                   </p>
                   {editing ? (
                     <Input className="mt-1" value={editData!.phone} onChange={(e) => setEditData({ ...editData!, phone: e.target.value })} />
@@ -749,7 +762,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> Phone 2
+                    <Phone className="h-3 w-3" /> {t("Phone 2")}
                   </p>
                   {editing ? (
                     <Input className="mt-1" value={editData!.phone2} onChange={(e) => setEditData({ ...editData!, phone2: e.target.value })} />
@@ -765,39 +778,46 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
 
               <div className="space-y-3 pt-2 border-t">
                 <div>
-                  <Label className="text-sm text-muted-foreground">Monthly Due Amount</Label>
+                  <Label className="text-sm text-muted-foreground">{t("Monthly Due Amount")}</Label>
                   {editing ? (
                     <Input type="number" className="mt-1" value={editData!.monthly_due_amount} onChange={(e) => setEditData({ ...editData!, monthly_due_amount: parseAmount(e.target.value) || 0 })} />
                   ) : (
-                    <p className="font-medium">{formatCurrency(apt.monthly_due_amount)}</p>
+                    <>
+                      <p className="font-medium">{formatCurrency(apt.monthly_due_amount)}</p>
+                      {(!apt.monthly_due_amount || apt.monthly_due_amount <= 0) && (
+                        <p className="mt-1 text-xs text-warning">
+                          {t("No monthly due set — paid months follow what each payment says it covers, and owed amounts can't be tracked. Click Edit to set one.")}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
                 <div>
-                  <Label className="text-sm text-muted-foreground">Occupancy Status</Label>
+                  <Label className="text-sm text-muted-foreground">{t("Occupancy Status")}</Label>
                   {editing ? (
                     <Select value={editData!.occupancy_status} onValueChange={(v) => setEditData({ ...editData!, occupancy_status: v as OccupancyStatus })}>
                       <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   ) : (
-                    <p className="font-medium">{OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}</p>
+                    <p className="font-medium">{t(OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label ?? "")}</p>
                   )}
                 </div>
                 <div>
-                  <Label className="text-sm text-muted-foreground">Notes</Label>
+                  <Label className="text-sm text-muted-foreground">{t("Notes")}</Label>
                   {editing ? (
                     <Textarea className="mt-1" value={editData!.notes} onChange={(e) => setEditData({ ...editData!, notes: e.target.value })} />
                   ) : (
-                    <p className="text-sm">{apt.notes || "No notes"}</p>
+                    <p className="text-sm">{apt.notes || t("No notes")}</p>
                   )}
                 </div>
               </div>
 
               <div className="pt-2 border-t">
                 <Button variant="destructive" size="sm" onClick={() => setDeleteConfirmId(apt.id)}>
-                  <Trash2 className="mr-1 h-3 w-3" /> Delete Apartment
+                  <Trash2 className="mr-1 h-3 w-3" /> {t("Delete Apartment")}
                 </Button>
               </div>
             </CardContent>
@@ -806,31 +826,31 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           {/* Balance Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Financial Summary</CardTitle>
+              <CardTitle>{t("Financial Summary")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Amount Owed</p>
+                  <p className="text-sm text-muted-foreground">{t("Amount Owed")}</p>
                   <p className={cn("text-2xl font-bold", apt.amount_owed > 0 ? "text-destructive" : "text-success")}>
                     {formatCurrency(apt.amount_owed)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Paid Through</p>
+                  <p className="text-sm text-muted-foreground">{t("Paid Through")}</p>
                   <p className="text-lg font-semibold">
-                    {apt.last_paid_month ? monthKeyLabel(apt.last_paid_month) : "No month paid yet"}
+                    {apt.last_paid_month ? monthKeyLabel(apt.last_paid_month) : t("No month paid yet")}
                   </p>
                 </div>
               </div>
               {apt.next_unpaid_month && (
                 <p className="text-sm text-muted-foreground">
-                  Next payment covers <span className="font-medium text-foreground">{monthKeyLabel(apt.next_unpaid_month)}</span>
+                  {t("Next payment covers")} <span className="font-medium text-foreground">{monthKeyLabel(apt.next_unpaid_month)}</span>
                 </p>
               )}
               {apt.days_overdue > 0 && (
                 <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                  {apt.days_overdue} days overdue
+                  {t("{n} days overdue", { n: apt.days_overdue })}
                 </div>
               )}
             </CardContent>
@@ -840,7 +860,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         {/* Month grid for this apartment */}
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle>Paid Months</CardTitle>
+            <CardTitle>{t("Paid Months")}</CardTitle>
             {yearNav}
           </CardHeader>
           <CardContent className="space-y-3">
@@ -870,27 +890,27 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         {/* Payment History */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Payment History</CardTitle>
+            <CardTitle>{t("Payment History")}</CardTitle>
             <Button size="sm" onClick={() => openAddPaymentFor(apt)}>
-              <Plus className="mr-1 h-3 w-3" /> Add Payment
+              <Plus className="mr-1 h-3 w-3" /> {t("Add Payment")}
             </Button>
           </CardHeader>
           <CardContent>
             {selectedPayments.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No payments recorded</p>
+              <p className="text-center text-muted-foreground py-8">{t("No payments recorded")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date Paid</TableHead>
-                      <TableHead>Payer</TableHead>
-                      <TableHead>Relation</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Months</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead className="w-[80px] text-right">Actions</TableHead>
+                      <TableHead>{t("Date Paid")}</TableHead>
+                      <TableHead>{t("Payer")}</TableHead>
+                      <TableHead>{t("Relation")}</TableHead>
+                      <TableHead>{t("Amount")}</TableHead>
+                      <TableHead>{t("Method")}</TableHead>
+                      <TableHead>{t("Months")}</TableHead>
+                      <TableHead>{t("Notes")}</TableHead>
+                      <TableHead className="w-[80px] text-right">{t("Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -898,28 +918,28 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       <TableRow key={p.id}>
                         <TableCell className="whitespace-nowrap">{formatDate(p.date_paid)}</TableCell>
                         <TableCell>{p.payer_name}</TableCell>
-                        <TableCell>{p.payer_relation ? relationLabel(p.payer_relation) : "—"}</TableCell>
+                        <TableCell>{p.payer_relation ? t(relationLabel(p.payer_relation)) : "—"}</TableCell>
                         <TableCell className="font-medium">{formatCurrency(p.amount)}</TableCell>
                         <TableCell>
-                          <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
+                          <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{t(p.method)}</Badge>
                         </TableCell>
                         <TableCell className="text-sm whitespace-nowrap">
                           {p.extra ? (
-                            <Badge variant="outline" title="Not tied to months">Extra</Badge>
+                            <Badge variant="outline" title={t("Not tied to months")}>{t("Extra")}</Badge>
                           ) : (
                             monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))
                           )}
                           {p.on_dashboard === false && (
-                            <Badge variant="secondary" className="ml-1" title="Hidden from the dashboard totals">Off dash</Badge>
+                            <Badge variant="secondary" className="ml-1" title={t("Hidden from the dashboard totals")}>{t("Off dash")}</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate">{p.notes || "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPayment(p)} aria-label="Edit payment">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPayment(p)} aria-label={t("Edit payment")}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletePaymentId(p.id)} aria-label="Delete payment">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletePaymentId(p.id)} aria-label={t("Delete payment")}>
                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </div>
@@ -937,14 +957,14 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete Apartment</DialogTitle>
+              <DialogTitle>{t("Delete Apartment")}</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              This will permanently delete this apartment and all associated payments. This action cannot be undone.
+              {t("This will permanently delete this apartment and all associated payments. This action cannot be undone.")}
             </p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-              <Button variant="destructive" onClick={() => deleteConfirmId && confirmDelete(deleteConfirmId)}>Delete</Button>
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>{t("Cancel")}</Button>
+              <Button variant="destructive" onClick={() => deleteConfirmId && confirmDelete(deleteConfirmId)}>{t("Delete")}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -959,22 +979,22 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">Apartments & Payments</h1>
+        <h1 className="text-2xl font-bold">{t("Apartments & Payments")}</h1>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => { setAptForm(emptyApartmentForm); setAptDialogOpen(true) }}>
-            <Building2 className="mr-1 h-4 w-4" /> Add Apartment
+            <Building2 className="mr-1 h-4 w-4" /> {t("Add Apartment")}
           </Button>
           <Button variant="outline" onClick={() => openAddPaymentFor(null)}>
-            <DollarSign className="mr-1 h-4 w-4" /> Add Payment
+            <DollarSign className="mr-1 h-4 w-4" /> {t("Add Payment")}
           </Button>
           <Button variant="outline" onClick={exportPaymentsCsv}>
-            <Download className="mr-1 h-4 w-4" /> Export CSV
+            <Download className="mr-1 h-4 w-4" /> {t("Export CSV")}
           </Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-1 h-4 w-4" /> Import CSV
+            <Upload className="mr-1 h-4 w-4" /> {t("Import CSV")}
           </Button>
-          <Button variant="outline" onClick={copyPaymentsCsvPrompt} title="Copy an AI prompt that converts your raw data into an import-ready CSV">
-            <ClipboardCopy className="mr-1 h-4 w-4" /> Copy CSV Prompt
+          <Button variant="outline" onClick={copyPaymentsCsvPrompt} title={t("Copy an AI prompt that converts your raw data into an import-ready CSV")}>
+            <ClipboardCopy className="mr-1 h-4 w-4" /> {t("Copy CSV Prompt")}
           </Button>
           <input
             ref={fileInputRef}
@@ -994,7 +1014,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name, unit, or payer..."
+                  placeholder={t("Search by name, unit, or payer...")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -1011,9 +1031,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 <Select value={filterBuilding} onValueChange={setFilterBuilding}>
                   <SelectTrigger className="w-[140px]"><SelectValue placeholder="Building" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Buildings</SelectItem>
+                    <SelectItem value="all">{t("All Buildings")}</SelectItem>
                     {Array.from({ length: numBuildings }, (_, i) => String(i + 1)).map((b) => (
-                      <SelectItem key={b} value={b}>Building {b}</SelectItem>
+                      <SelectItem key={b} value={b}>{t("Building")} {b}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1021,38 +1041,38 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <Select value={filterFloor} onValueChange={setFilterFloor}>
                 <SelectTrigger className="w-[130px]"><SelectValue placeholder="Floor" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Floors</SelectItem>
+                  <SelectItem value="all">{t("All Floors")}</SelectItem>
                   {floors.map((f) => (
-                    <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
+                    <SelectItem key={f} value={f}>{f.startsWith("M") ? `${t("Mezzanine")} ${f}` : `${t("Floor")} ${f}`}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as PaymentStatus | "all")}>
                 <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="due_soon">Due Soon</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="all">{t("All Status")}</SelectItem>
+                  <SelectItem value="paid">{t("Paid")}</SelectItem>
+                  <SelectItem value="due_soon">{t("Due Soon")}</SelectItem>
+                  <SelectItem value="overdue">{t("Overdue")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterOccupancy} onValueChange={(v) => setFilterOccupancy(v as OccupancyStatus | "all")}>
                 <SelectTrigger className="w-[160px]"><SelectValue placeholder="Occupancy" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Occupancy</SelectItem>
-                  {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  <SelectItem value="all">{t("All Occupancy")}</SelectItem>
+                  {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={filterMethod} onValueChange={(v) => setFilterMethod(v as PaymentMethod | "all")}>
                 <SelectTrigger className="w-[120px]"><SelectValue placeholder="Method" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Methods</SelectItem>
-                  {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  <SelectItem value="all">{t("All Methods")}</SelectItem>
+                  {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{t(m.label)}</SelectItem>)}
                 </SelectContent>
               </Select>
               {filtersActive && (
                 <Button variant="ghost" onClick={resetFilters}>
-                  <RotateCcw className="mr-1 h-4 w-4" /> Reset Filters
+                  <RotateCcw className="mr-1 h-4 w-4" /> {t("Reset Filters")}
                 </Button>
               )}
             </div>
@@ -1063,7 +1083,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       {/* Summary Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Summary</CardTitle>
+          <CardTitle>{t("Summary")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -1071,23 +1091,23 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <TableHeader>
                 <TableRow>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("unit_number")}>
-                    Unit <SortIcon field="unit_number" />
+                    {t("Unit")} <SortIcon field="unit_number" />
                   </TableHead>
-                  <TableHead>Resident</TableHead>
-                  <TableHead>Monthly Due</TableHead>
-                  <TableHead>Occupancy</TableHead>
-                  <TableHead>Payment Status</TableHead>
+                  <TableHead>{t("Resident")}</TableHead>
+                  <TableHead>{t("Monthly Due")}</TableHead>
+                  <TableHead>{t("Occupancy")}</TableHead>
+                  <TableHead>{t("Payment Status")}</TableHead>
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("amount_owed")}>
-                    Amount Owed <SortIcon field="amount_owed" />
+                    {t("Amount Owed")} <SortIcon field="amount_owed" />
                   </TableHead>
-                  <TableHead className="text-right">Last Paid Month</TableHead>
+                  <TableHead className="text-right">{t("Last Paid Month")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No apartments match your search/filters
+                      {t("No apartments match your search/filters")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1102,12 +1122,12 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       <TableCell>{formatCurrency(apt.monthly_due_amount)}</TableCell>
                       <TableCell>
                         <Badge variant={occupancyBadgeVariant(apt.occupancy_status)}>
-                          {OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label}
+                          {t(OCCUPANCY_STATUSES.find((o) => o.value === apt.occupancy_status)?.label ?? "")}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={statusBadgeVariant(apt.payment_status)}>
-                          {apt.payment_status === "paid" ? "Paid" : apt.payment_status === "due_soon" ? "Due Soon" : "Overdue"}
+                          {apt.payment_status === "paid" ? t("Paid") : apt.payment_status === "due_soon" ? t("Due Soon") : t("Overdue")}
                         </Badge>
                       </TableCell>
                       <TableCell className={cn("font-medium", apt.amount_owed > 0 && "text-destructive")}>
@@ -1129,10 +1149,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <div>
-            <CardTitle>Collection Grid</CardTitle>
+            <CardTitle>{t("Collection Grid")}</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              Paid months per apartment at a glance, lowest unit first — it
-              follows the search and filters above. C = paid in cash, B = by bank.
+              {t("Paid months per apartment at a glance, lowest unit first — it follows the search and filters above. C = paid in cash, B = by bank.")}
             </p>
           </div>
           {yearNav}
@@ -1142,11 +1161,11 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-card">Unit</TableHead>
+                  <TableHead className="sticky left-0 bg-card">{t("Unit")}</TableHead>
                   {MONTH_LABELS.map((m) => (
                     <TableHead key={m} className="text-center px-1">{m}</TableHead>
                   ))}
-                  <TableHead className="text-right">Collected {gridYear}</TableHead>
+                  <TableHead className="text-right">{t("Collected")} {gridYear}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1154,8 +1173,8 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   <TableRow>
                     <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                       {apartmentsWithStatus.length === 0
-                        ? "No apartments yet"
-                        : "No apartments match your search/filters"}
+                        ? t("No apartments yet")
+                        : t("No apartments match your search/filters")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1201,9 +1220,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       {/* Payment Log */}
       <Card>
         <CardHeader>
-          <CardTitle>Payment Log</CardTitle>
+          <CardTitle>{t("Payment Log")}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Every payment entry. Use the pencil to fix a wrong entry.
+            {t("Every payment entry. Use the pencil to fix a wrong entry.")}
           </p>
         </CardHeader>
         <CardContent className="p-0">
@@ -1211,21 +1230,21 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date Paid</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Payer</TableHead>
-                  <TableHead>Relation</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Months</TableHead>
-                  <TableHead className="w-[90px] text-right">Actions</TableHead>
+                  <TableHead>{t("Date Paid")}</TableHead>
+                  <TableHead>{t("Unit")}</TableHead>
+                  <TableHead>{t("Payer")}</TableHead>
+                  <TableHead>{t("Relation")}</TableHead>
+                  <TableHead>{t("Amount")}</TableHead>
+                  <TableHead>{t("Method")}</TableHead>
+                  <TableHead>{t("Months")}</TableHead>
+                  <TableHead className="w-[90px] text-right">{t("Actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paymentLog.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No payments entered yet
+                      {t("No payments entered yet")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1238,27 +1257,27 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       <TableCell className="whitespace-nowrap">{formatDate(p.date_paid)}</TableCell>
                       <TableCell className="font-medium">{p.unit_number}</TableCell>
                       <TableCell>{p.payer_name}</TableCell>
-                      <TableCell>{p.payer_relation ? relationLabel(p.payer_relation) : "—"}</TableCell>
+                      <TableCell>{p.payer_relation ? t(relationLabel(p.payer_relation)) : "—"}</TableCell>
                       <TableCell className="font-medium">{formatCurrency(p.amount)}</TableCell>
                       <TableCell>
-                        <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{p.method}</Badge>
+                        <Badge variant={p.method === "cash" ? "outline" : "secondary"}>{t(p.method)}</Badge>
                       </TableCell>
                       <TableCell className="text-sm whitespace-nowrap">
                         {p.extra ? (
-                          <Badge variant="outline" title="Not tied to months">Extra</Badge>
+                          <Badge variant="outline" title={t("Not tied to months")}>{t("Extra")}</Badge>
                         ) : (
                           monthRangeLabel(monthKeyOrNull(p.period_start) ?? monthKey(p.date_paid), monthKeyOrNull(p.period_end) ?? monthKey(p.date_paid))
                         )}
                         {p.on_dashboard === false && (
-                          <Badge variant="secondary" className="ml-1" title="Hidden from the dashboard totals">Off dash</Badge>
+                          <Badge variant="secondary" className="ml-1" title={t("Hidden from the dashboard totals")}>{t("Off dash")}</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPayment(p)} aria-label="Edit payment">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditPayment(p)} aria-label={t("Edit payment")}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletePaymentId(p.id)} aria-label="Delete payment">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletePaymentId(p.id)} aria-label={t("Delete payment")}>
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>
@@ -1276,21 +1295,21 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       <Dialog open={aptDialogOpen} onOpenChange={setAptDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Apartment</DialogTitle>
+            <DialogTitle>{t("Add Apartment")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Unit Number *</Label>
+                <Label>{t("Unit Number")} *</Label>
                 <Input value={aptForm.unit_number} onChange={(e) => setAptForm({ ...aptForm, unit_number: e.target.value })} placeholder="e.g. 3" />
               </div>
               <div>
-                <Label>Floor</Label>
+                <Label>{t("Floor")}</Label>
                 <Select value={aptForm.floor} onValueChange={(v) => setAptForm({ ...aptForm, floor: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {floors.map((f) => (
-                      <SelectItem key={f} value={f}>{f.startsWith("M") ? `Mezzanine ${f}` : `Floor ${f}`}</SelectItem>
+                      <SelectItem key={f} value={f}>{f.startsWith("M") ? `${t("Mezzanine")} ${f}` : `${t("Floor")} ${f}`}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1298,62 +1317,62 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             </div>
             {numBuildings > 1 && (
               <div>
-                <Label>Building</Label>
+                <Label>{t("Building")}</Label>
                 <Select value={aptForm.building_no} onValueChange={(v) => setAptForm({ ...aptForm, building_no: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Array.from({ length: numBuildings }, (_, i) => String(i + 1)).map((b) => (
-                      <SelectItem key={b} value={b}>Building {b}</SelectItem>
+                      <SelectItem key={b} value={b}>{t("Building")} {b}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
             <div>
-              <Label>Primary Resident Name *</Label>
+              <Label>{t("Primary Resident Name")} *</Label>
               <Input value={aptForm.primary_resident_name} onChange={(e) => setAptForm({ ...aptForm, primary_resident_name: e.target.value })} />
             </div>
             <div>
-              <Label>Second Inhabitant</Label>
-              <Input value={aptForm.secondary_resident_name} onChange={(e) => setAptForm({ ...aptForm, secondary_resident_name: e.target.value })} placeholder="Optional" />
+              <Label>{t("Second Inhabitant")}</Label>
+              <Input value={aptForm.secondary_resident_name} onChange={(e) => setAptForm({ ...aptForm, secondary_resident_name: e.target.value })} placeholder={t("Optional")} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Phone 1</Label>
+                <Label>{t("Phone 1")}</Label>
                 <Input value={aptForm.phone} onChange={(e) => setAptForm({ ...aptForm, phone: e.target.value })} />
               </div>
               <div>
-                <Label>Phone 2</Label>
+                <Label>{t("Phone 2")}</Label>
                 <Input value={aptForm.phone2} onChange={(e) => setAptForm({ ...aptForm, phone2: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Email</Label>
+                <Label>{t("Email")}</Label>
                 <Input type="email" value={aptForm.email} onChange={(e) => setAptForm({ ...aptForm, email: e.target.value })} />
               </div>
               <div>
-                <Label>Monthly Due *</Label>
+                <Label>{t("Monthly Due")} *</Label>
                 <Input type="text" inputMode="decimal" value={aptForm.monthly_due_amount} onChange={(e) => setAptForm({ ...aptForm, monthly_due_amount: e.target.value })} placeholder="0" />
               </div>
             </div>
             <div>
-              <Label>Occupancy Status</Label>
+              <Label>{t("Occupancy Status")}</Label>
               <Select value={aptForm.occupancy_status} onValueChange={(v) => setAptForm({ ...aptForm, occupancy_status: v as OccupancyStatus })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  {OCCUPANCY_STATUSES.map((o) => <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Notes</Label>
+              <Label>{t("Notes")}</Label>
               <Textarea value={aptForm.notes} onChange={(e) => setAptForm({ ...aptForm, notes: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAptDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddApartment}>Add Apartment</Button>
+            <Button variant="outline" onClick={() => setAptDialogOpen(false)}>{t("Cancel")}</Button>
+            <Button onClick={handleAddApartment}>{t("Add Apartment")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1368,13 +1387,13 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       <Dialog open={!!deletePaymentId} onOpenChange={() => setDeletePaymentId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Payment</DialogTitle>
+            <DialogTitle>{t("Delete Payment")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently remove this payment entry. This action cannot be undone.
+            {t("This will permanently remove this payment entry. This action cannot be undone.")}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletePaymentId(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDeletePaymentId(null)}>{t("Cancel")}</Button>
             <Button
               variant="destructive"
               onClick={() => {
@@ -1382,7 +1401,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 setDeletePaymentId(null)
               }}
             >
-              Delete
+              {t("Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1408,11 +1427,11 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingPayment ? "Edit Payment" : "Add Payment"}</DialogTitle>
+            <DialogTitle>{editingPayment ? t("Edit Payment") : t("Add Payment")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>
-              <Label>Apartment *</Label>
+              <Label>{t("Apartment")} *</Label>
               <Select
                 value={payForm.apartment_id}
                 onValueChange={(v) => {
@@ -1429,7 +1448,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   })
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Select apartment" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("Select apartment")} /></SelectTrigger>
                 <SelectContent>
                   {[...state.apartments].sort((a, b) => unitCompare(a.unit_number, b.unit_number)).map((a) => (
                     <SelectItem key={a.id} value={a.id}>
@@ -1441,19 +1460,19 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Payer Name</Label>
+                <Label>{t("Payer Name")}</Label>
                 <Input value={payForm.payer_name} onChange={(e) => setPayForm({ ...payForm, payer_name: e.target.value })} />
               </div>
               <div>
-                <Label>Relation to Resident</Label>
+                <Label>{t("Relation to Resident")}</Label>
                 <Select
                   value={payForm.payer_relation || undefined}
                   onValueChange={(v) => setPayForm({ ...payForm, payer_relation: v as PayerRelation })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("Optional")} /></SelectTrigger>
                   <SelectContent>
                     {PAYER_RELATIONS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      <SelectItem key={r.value} value={r.value}>{t(r.label)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1463,10 +1482,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label>Extra payment (not tied to months)</Label>
+                  <Label>{t("Extra payment (not tied to months)")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    For money like last year&apos;s dues paid now — it won&apos;t
-                    mark any month as paid
+                    {t("For money like last year's dues paid now — it won't mark any month as paid")}
                   </p>
                 </div>
                 <Switch
@@ -1477,9 +1495,9 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               {payForm.extra && (
                 <div className="flex items-center justify-between border-t border-border pt-3">
                   <div>
-                    <Label>Count on dashboard</Label>
+                    <Label>{t("Count on dashboard")}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Off = the money stays out of every dashboard total
+                      {t("Off = the money stays out of every dashboard total")}
                     </p>
                   </div>
                   <Switch
@@ -1493,7 +1511,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>First Month Paid *</Label>
+                    <Label>{t("First Month Paid")} *</Label>
                     <Input
                       type="month"
                       value={payForm.from_month}
@@ -1501,7 +1519,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                     />
                   </div>
                   <div>
-                    <Label>Number of Months</Label>
+                    <Label>{t("Number of Months")}</Label>
                     <Input
                       type="number"
                       min="1"
@@ -1520,15 +1538,15 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 </div>
                 {isValidMonthKey(payForm.from_month) && (
                   <p className="text-xs text-muted-foreground -mt-2">
-                    Covers: {monthRangeLabel(payForm.from_month, endMonth)}
-                    {due > 0 && ` · expected ${formatCurrency(due * count)}`}
+                    {t("Covers:")} {monthRangeLabel(payForm.from_month, endMonth)}
+                    {due > 0 && ` · ${t("expected")} ${formatCurrency(due * count)}`}
                   </p>
                 )}
               </>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Amount *</Label>
+                <Label>{t("Amount")} *</Label>
                 {/* free-typing text input (numeric keypad on mobile) — the
                     number spinner made data entry painful */}
                 <Input
@@ -1540,25 +1558,25 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 />
               </div>
               <div>
-                <Label>Method</Label>
+                <Label>{t("Method")}</Label>
                 <Select value={payForm.method} onValueChange={(v) => setPayForm({ ...payForm, method: v as PaymentMethod })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    {PAYMENT_METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{t(m.label)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div>
-              <Label>Date Paid *</Label>
+              <Label>{t("Date Paid")} *</Label>
               <Input type="date" value={payForm.date_paid} onChange={(e) => setPayForm({ ...payForm, date_paid: e.target.value })} />
             </div>
             {!payForm.extra && (
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
-                  <Label>Repeat monthly</Label>
+                  <Label>{t("Repeat monthly")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Automatically add this payment again each month
+                    {t("Automatically add this payment again each month")}
                   </p>
                 </div>
                 <Switch
@@ -1568,13 +1586,13 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </div>
             )}
             <div>
-              <Label>Notes</Label>
+              <Label>{t("Notes")}</Label>
               <Textarea value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setPayDialogOpen(false); setEditingPayment(null) }}>Cancel</Button>
-            <Button onClick={handleSubmitPayment}>{editingPayment ? "Save Changes" : "Add Payment"}</Button>
+            <Button variant="outline" onClick={() => { setPayDialogOpen(false); setEditingPayment(null) }}>{t("Cancel")}</Button>
+            <Button onClick={handleSubmitPayment}>{editingPayment ? t("Save Changes") : t("Add Payment")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
