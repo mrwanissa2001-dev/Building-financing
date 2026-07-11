@@ -105,6 +105,16 @@ const AR: Record<string, string> = {
   "extras": "إضافات",
   "other": "أخرى",
 
+  // ── Dashboard — greeting & general ──
+  "Good morning": "صباح الخير",
+  "Good afternoon": "مساء الخير",
+  "Good evening": "مساء الخير",
+  "overview": "نظرة عامة",
+  "View": "عرض",
+  "vs last mo": "مقابل الشهر الماضي",
+  "Settings": "الإعدادات",
+  "Traveling (paying)": "مسافر (يدفع)",
+
   // ── Dashboard ──
   "Building finance overview": "نظرة عامة على مالية المبنى",
   "finance overview": "نظرة عامة مالية",
@@ -150,6 +160,7 @@ const AR: Record<string, string> = {
     "إجماليات السنوات المرحّلة — عدّلها في إعدادات المبنى. السنوات التي لها تقسيم نقدي/بنكي تُضاف إلى بطاقات الرصيد أعلاه.",
   "Carried to Balance": "المرحّل إلى الرصيد",
   "Expenditure Breakdown": "توزيع المصروفات",
+  "Overdue alerts": "تنبيهات التأخير",
   "Overdue Alerts": "تنبيهات التأخير",
   "{n} apartments requiring attention": "{n} شقة تحتاج إلى متابعة",
   "Days Overdue": "أيام التأخير",
@@ -157,6 +168,13 @@ const AR: Record<string, string> = {
   "{n} days": "{n} يوم",
   "{n} days overdue": "متأخر {n} يوم",
   "All apartments are up to date": "جميع الشقق مسددة حتى الآن",
+  "Owed": "المستحق",
+  "Recurring expenses grid": "شبكة المصروفات المتكررة",
+  "Paid months per recurring expense": "الأشهر المدفوعة لكل مصروف متكرر",
+  "No recurring expenses yet": "لا توجد مصروفات متكررة بعد",
+  "Previous years": "السنوات السابقة",
+  "Migrated yearly totals": "الإجماليات المرحّلة للسنوات السابقة",
+  "Breakdown": "التوزيع",
   "Transfer Between Cash and Bank": "تحويل بين النقد والبنك",
   "Move money between the cash box and the bank account — the balance cards update immediately.":
     "انقل المال بين صندوق النقد والحساب البنكي — تتحدث بطاقات الرصيد فورًا.",
@@ -326,6 +344,11 @@ const AR: Record<string, string> = {
   "The expense date is required.": "تاريخ المصروف مطلوب.",
   "Enter a vendor": "أدخل المورّد",
   "Say who was paid — pick a person or type a name.": "حدد من استلم المال — اختر شخصًا أو اكتب اسمًا.",
+
+  // ── Expenses page (recurring) ──
+  "Additional months already paid": "أشهر إضافية مدفوعة بالفعل",
+  "Creates a separate log entry for each additional paid month after the date above.":
+    "ينشئ إدخالًا منفصلًا في السجل لكل شهر إضافي مدفوع بعد التاريخ أعلاه.",
 
   // ── Settings page ──
   "Configure your building's baseline settings": "اضبط الإعدادات الأساسية لمبناك",

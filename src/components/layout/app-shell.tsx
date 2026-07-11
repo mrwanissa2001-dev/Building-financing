@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SyncErrorToaster />
             <div className="flex min-h-screen">
               <Sidebar theme={theme} toggleTheme={toggleTheme} />
-              <main className="flex-1 lg:pl-64 rtl:lg:pl-0 rtl:lg:pr-64">
+              <main className="flex-1 lg:ps-64">
                 <div className="mx-auto max-w-7xl px-4 py-6 pt-16 sm:px-6 lg:px-8 lg:pt-6">
                   {children}
                 </div>
