@@ -7,7 +7,7 @@ import { useLayout } from "@/lib/layout"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from "@/lib/constants"
 import { buildCsv, csvToObjects, downloadCsv, normalizeDate, parseAmount } from "@/lib/csv"
-import { monthKey, currentMonthKey, monthsBetween } from "@/lib/months"
+import { monthKey, currentMonthKey, monthsBetween, addMonthsToKey } from "@/lib/months"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { useI18n } from "@/lib/i18n"
@@ -89,6 +89,7 @@ interface ExpenseFormData {
   vendor: string
   recurring: boolean
   recurring_interval: number
+  months_already_paid: number
   notes: string
 }
 
@@ -100,6 +101,7 @@ const emptyForm: ExpenseFormData = {
   vendor: "",
   recurring: false,
   recurring_interval: 1,
+  months_already_paid: 0,
   notes: "",
 }
 
@@ -315,6 +317,7 @@ function ExpensesContent() {
       vendor: expense.vendor,
       recurring: expense.recurring ?? false,
       recurring_interval: Math.max(1, expense.recurring_interval ?? 1),
+      months_already_paid: 0,
       notes: expense.notes,
     })
     const people = peopleFor(expense.category_id)
@@ -359,6 +362,7 @@ function ExpensesContent() {
         notes: form.notes,
       })
     } else {
+      // Save the primary entry (month 0 = the date entered)
       addExpense({
         category_id: form.category_id,
         amount: parsedAmount,
@@ -369,6 +373,30 @@ function ExpensesContent() {
         recurring_interval: form.recurring_interval,
         notes: form.notes,
       })
+
+      // If recurring and "already paid" > 0, create one entry per additional paid month
+      if (form.recurring && form.months_already_paid > 0) {
+        const interval = form.recurring_interval || 1
+        const baseKey = monthKey(form.date)
+        const dayPart = form.date.slice(8) // DD
+        for (let i = 1; i <= form.months_already_paid; i++) {
+          const nextKey = addMonthsToKey(baseKey, i * interval)
+          const [y, m] = nextKey.split("-")
+          // clamp day to end of that month
+          const maxDay = new Date(Number(y), Number(m), 0).getDate()
+          const day = String(Math.min(Number(dayPart), maxDay)).padStart(2, "0")
+          addExpense({
+            category_id: form.category_id,
+            amount: parsedAmount,
+            method: form.method,
+            date: `${nextKey}-${day}`,
+            vendor: form.vendor,
+            recurring: true,
+            recurring_interval: interval,
+            notes: form.notes,
+          })
+        }
+      }
     }
 
     setDialogOpen(false)
@@ -963,24 +991,44 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   />
                 </div>
                 {form.recurring && (
-                  <div className="space-y-1">
-                    <Label className="text-xs">{t("Repeats")}</Label>
-                    <Select
-                      value={String(form.recurring_interval)}
-                      onValueChange={(v) =>
-                        setForm((f) => ({ ...f, recurring_interval: parseInt(v, 10) || 1 }))
-                      }
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {RECURRING_INTERVALS.map((r) => (
-                          <SelectItem key={r.value} value={String(r.value)}>{t(r.label)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      {t("Starts from this expense's date and shows in the Recurring Expenses grid above.")}
-                    </p>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">{t("Repeats")}</Label>
+                      <Select
+                        value={String(form.recurring_interval)}
+                        onValueChange={(v) =>
+                          setForm((f) => ({ ...f, recurring_interval: parseInt(v, 10) || 1 }))
+                        }
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {RECURRING_INTERVALS.map((r) => (
+                            <SelectItem key={r.value} value={String(r.value)}>{t(r.label)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {t("Starts from this expense's date and shows in the Recurring Expenses grid above.")}
+                      </p>
+                    </div>
+                    {!editingExpense && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">{t("Additional months already paid")}</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={60}
+                          placeholder="0"
+                          value={form.months_already_paid || ""}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, months_already_paid: Math.max(0, parseInt(e.target.value, 10) || 0) }))
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {t("Creates a separate log entry for each additional paid month after the date above.")}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

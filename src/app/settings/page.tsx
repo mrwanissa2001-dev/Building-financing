@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useI18n, LANGUAGES, type Lang } from "@/lib/i18n"
+import { useI18n } from "@/lib/i18n"
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, Check, Pencil, X, Users, History, Languages, LayoutGrid } from "lucide-react"
+import { Plus, Trash2, Check, Pencil, X, Users, History, LayoutGrid } from "lucide-react"
 
 // natural unit sort: "2" before "10"
 const unitCompare = (a: string, b: string) =>
@@ -65,7 +65,7 @@ export default function SettingsPage() {
     deleteApartment,
   } = useStore()
   const { toast } = useToast()
-  const { t, lang, setLang } = useI18n()
+  const { t } = useI18n()
 
   const [buildingName, setBuildingName] = useState("")
   const [totalApartments, setTotalApartments] = useState("")
@@ -353,32 +353,6 @@ export default function SettingsPage() {
           {t("Configure your building's baseline settings")}
         </p>
       </div>
-
-      {/* Language */}
-      <Card className="max-w-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Languages className="h-4 w-4" />
-            {t("Language")}
-          </CardTitle>
-          <CardDescription>
-            {t("Choose the display language. Arabic flips the layout right-to-left.")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
-            <SelectTrigger className="w-[240px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {LANGUAGES.map((l) => (
-                <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("Numbers and dates keep Western digits so data entry stays consistent.")}
-          </p>
-        </CardContent>
-      </Card>
 
       {/* Supabase connection status */}
       <Card className="max-w-2xl">

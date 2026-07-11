@@ -15,6 +15,8 @@ import {
   Minus,
   ArrowRight,
   Repeat,
+  ArrowLeftRight,
+  Trash2,
 } from "lucide-react"
 import {
   BarChart,
@@ -35,6 +37,26 @@ import { useStore } from "@/lib/store"
 import { useLayout } from "@/lib/layout"
 import { useI18n } from "@/lib/i18n"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
+import { parseAmount } from "@/lib/csv"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
 import { monthKey, currentMonthKey, monthsBetween, monthKeyLabel } from "@/lib/months"
 import type { MonthCellStatus } from "@/lib/computations"
 import { Card } from "@/components/ui/card"
@@ -99,12 +121,13 @@ function greeting(): string {
 
 /** small "View →" affordance shared by widget headers */
 function ViewLink({ href }: { href: string }) {
+  const { t } = useI18n()
   return (
     <Link
       href={href}
       className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
     >
-      View <ArrowRight className="h-3.5 w-3.5" />
+      {t("View")} <ArrowRight className="h-3.5 w-3.5" />
     </Link>
   )
 }
@@ -137,7 +160,8 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { state } = useStore()
+  const { state, addTransfer, deleteTransfer } = useStore()
+  const { toast } = useToast()
   const {
     dashboardStats,
     occupancyBreakdown,
@@ -149,8 +173,14 @@ export default function DashboardPage() {
     getMonthCells,
   } = useComputed()
   const { visibleKeys } = useLayout()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { t } = useI18n()
+
+  // Transfer dialog state
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferDirection, setTransferDirection] = useState<"cash_to_bank" | "bank_to_cash">("cash_to_bank")
+  const [transferAmount, setTransferAmount] = useState("")
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [transferNotes, setTransferNotes] = useState("")
 
   const [dateRange, setDateRange] = useState<DateRange>(() => {
     const y = new Date().getFullYear()
@@ -163,6 +193,15 @@ export default function DashboardPage() {
     [rangeStart, rangeEnd]
   )
 
+  // Range-filtered totals for the stat cards
+  const rangeStats = useMemo(() => {
+    const pays = state.payments.filter((p) => inRange(p.date_paid))
+    const exps = state.expenses.filter((e) => inRange(e.date))
+    const collected = pays.reduce((s, p) => s + p.amount, 0)
+    const spent = exps.reduce((s, e) => s + e.amount, 0)
+    return { collected, spent, net: collected - spent }
+  }, [state.payments, state.expenses, inRange])
+
   // 12 months of series for sparklines + deltas (independent of the range)
   const months12 = useMemo(() => getMonthlyIncomeExpenses(12), [getMonthlyIncomeExpenses])
   const incomeSeries = months12.map((m) => m.income)
@@ -172,7 +211,6 @@ export default function DashboardPage() {
   const collectedDelta = last > 0 ? pctDelta(incomeSeries[last], incomeSeries[last - 1]) : null
   const spentDelta = last > 0 ? pctDelta(expenseSeries[last], expenseSeries[last - 1]) : null
   const netDelta = last > 0 ? pctDelta(netSeries[last], netSeries[last - 1]) : null
-  const netThisMonth = dashboardStats.collected_this_month - dashboardStats.spent_this_month
 
   const balanceSeries = useMemo(() => {
     const now = new Date()
@@ -316,11 +354,32 @@ export default function DashboardPage() {
 
   if (!state.loaded) return <DashboardSkeleton />
 
+  function handleTransfer() {
+    const amount = parseAmount(transferAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: t("Enter a valid amount"), description: t("The transfer amount must be greater than zero."), variant: "destructive" })
+      return
+    }
+    if (!transferDate) {
+      toast({ title: t("Pick a date"), description: t("The transfer needs a date."), variant: "destructive" })
+      return
+    }
+    const fromMethod = transferDirection === "cash_to_bank" ? "cash" : "bank"
+    const toMethod = transferDirection === "cash_to_bank" ? "bank" : "cash"
+    addTransfer({ amount, from_method: fromMethod, to_method: toMethod, date: transferDate, notes: transferNotes })
+    toast({
+      title: t("Transfer recorded"),
+      description: t("{amount} moved from {from} to {to}.", { amount: formatCurrency(amount), from: t(fromMethod), to: t(toMethod) }),
+      variant: "success",
+    })
+    setTransferAmount("")
+    setTransferNotes("")
+    setTransferOpen(false)
+  }
+
   const now = new Date()
   const yy = now.getFullYear()
   const mm = String(now.getMonth() + 1).padStart(2, "0")
-  const monthStart = `${yy}-${mm}-01`
-  const monthEnd = `${yy}-${mm}-${String(new Date(yy, now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`
   const rangeQuery = `start=${rangeStart}&end=${rangeEnd}`
 
   const heroDeltaUp = balanceDelta !== null && balanceDelta >= 0
@@ -342,7 +401,7 @@ export default function DashboardPage() {
           </div>
           <div className="relative">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-white/80">Total balance</p>
+              <p className="text-sm font-medium text-white/80">{t("Total Balance")}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/15">
                 <Scale className="h-4 w-4" />
               </span>
@@ -359,11 +418,11 @@ export default function DashboardPage() {
             </div>
             <div className="mt-3 space-y-1.5 text-sm">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-white/80"><Wallet className="h-3.5 w-3.5" /> Cash</span>
+                <span className="flex items-center gap-1.5 text-white/80"><Wallet className="h-3.5 w-3.5" /> {t("Cash")}</span>
                 <span className="nums font-semibold">{formatCurrency(cash)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-white/80"><Landmark className="h-3.5 w-3.5" /> Bank</span>
+                <span className="flex items-center gap-1.5 text-white/80"><Landmark className="h-3.5 w-3.5" /> {t("Bank")}</span>
                 <span className="nums font-semibold">{formatCurrency(bank)}</span>
               </div>
             </div>
@@ -372,24 +431,24 @@ export default function DashboardPage() {
       </Link>
     ),
     collected: (
-      <StatCard label="Collected this month" value={formatCurrency(dashboardStats.collected_this_month)} icon={TrendingUp} accent="var(--chart-1)" delta={collectedDelta} deltaLabel="vs last mo" goodWhenUp spark={incomeSeries} href={`/apartments?${rangeQuery}`} />
+      <StatCard label={t("Collected")} value={formatCurrency(rangeStats.collected)} icon={TrendingUp} accent="var(--chart-1)" delta={collectedDelta} deltaLabel={t("vs last mo")} goodWhenUp spark={incomeSeries} href={`/apartments?${rangeQuery}`} />
     ),
     spent: (
-      <StatCard label="Spent this month" value={formatCurrency(dashboardStats.spent_this_month)} icon={TrendingDown} accent="var(--chart-2)" delta={spentDelta} deltaLabel="vs last mo" goodWhenUp={false} spark={expenseSeries} href={`/expenses?start=${monthStart}&end=${monthEnd}`} />
+      <StatCard label={t("Spent")} value={formatCurrency(rangeStats.spent)} icon={TrendingDown} accent="var(--chart-2)" delta={spentDelta} deltaLabel={t("vs last mo")} goodWhenUp={false} spark={expenseSeries} href={`/expenses?${rangeQuery}`} />
     ),
     net: (
-      <StatCard label="Net this month" value={formatCurrency(netThisMonth)} icon={Scale} accent="var(--chart-4)" delta={netDelta} deltaLabel="vs last mo" goodWhenUp spark={netSeries} href={`/expenses?start=${monthStart}&end=${monthEnd}`} />
+      <StatCard label={t("Net")} value={formatCurrency(rangeStats.net)} icon={Scale} accent="var(--chart-4)" delta={netDelta} deltaLabel={t("vs last mo")} goodWhenUp spark={netSeries} href={`/expenses?${rangeQuery}`} />
     ),
     income_expenses: (
       <Card className="p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold tracking-tight">Income vs expenses</h2>
-            <p className="text-sm text-muted-foreground">Monthly · {rangeLabel(dateRange)}</p>
+            <h2 className="font-semibold tracking-tight">{t("Monthly Income vs Expenses")}</h2>
+            <p className="text-sm text-muted-foreground">{t("month by month")} · {rangeLabel(dateRange)}</p>
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-1)" }} /><span className="text-muted-foreground">Income</span></span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-2)" }} /><span className="text-muted-foreground">Expenses</span></span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-1)" }} /><span className="text-muted-foreground">{t("Income")}</span></span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--chart-2)" }} /><span className="text-muted-foreground">{t("Expenses")}</span></span>
             <ViewLink href={`/expenses?${rangeQuery}`} />
           </div>
         </div>
@@ -411,8 +470,8 @@ export default function DashboardPage() {
       <Card className="p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold tracking-tight">Running balance</h2>
-            <p className="text-sm text-muted-foreground">Cumulative cash position</p>
+            <h2 className="font-semibold tracking-tight">{t("Running Balance")}</h2>
+            <p className="text-sm text-muted-foreground">{t("Cumulative balance over time (all data)")}</p>
           </div>
           <ViewLink href={`/apartments?${rangeQuery}`} />
         </div>
@@ -434,7 +493,7 @@ export default function DashboardPage() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <p className="flex h-full items-center justify-center text-muted-foreground">No data yet</p>
+            <p className="flex h-full items-center justify-center text-muted-foreground">{t("No data yet")}</p>
           )}
         </div>
       </Card>
@@ -443,7 +502,7 @@ export default function DashboardPage() {
       <Card className="p-5">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold tracking-tight">Expenses by category</h2>
+            <h2 className="font-semibold tracking-tight">{t("Expenses by Category")}</h2>
             <p className="text-sm text-muted-foreground">{rangeLabel(dateRange)}</p>
           </div>
           <ViewLink href={`/expenses?${rangeQuery}`} />
@@ -462,7 +521,7 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xs text-muted-foreground">Total</span>
+                <span className="text-xs text-muted-foreground">{t("Total:")}</span>
                 <span className="nums text-lg font-semibold">{formatCurrency(donutTotal)}</span>
               </div>
             </div>
@@ -478,7 +537,7 @@ export default function DashboardPage() {
             </div>
           </>
         ) : (
-          <p className="py-16 text-center text-muted-foreground">No expense data</p>
+          <p className="py-16 text-center text-muted-foreground">{t("No expenses in this period")}</p>
         )}
       </Card>
     ),
@@ -486,8 +545,8 @@ export default function DashboardPage() {
       <Card className="p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold tracking-tight">Occupancy</h2>
-            <p className="text-sm text-muted-foreground">{occupancyTotal} apartment{occupancyTotal !== 1 ? "s" : ""}</p>
+            <h2 className="font-semibold tracking-tight">{t("Occupancy Breakdown")}</h2>
+            <p className="text-sm text-muted-foreground">{t("{n} total apartments", { n: occupancyTotal })}</p>
           </div>
           <ViewLink href="/apartments" />
         </div>
@@ -502,7 +561,7 @@ export default function DashboardPage() {
           {occupancyItems.map((it) => (
             <Link key={it.label} href={it.href} className="flex items-center gap-2.5 rounded-md px-1 py-1 transition-colors hover:bg-muted/50">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: it.color }} />
-              <span className="text-sm text-muted-foreground">{it.label}</span>
+              <span className="text-sm text-muted-foreground">{t(it.label)}</span>
               <span className="nums ml-auto text-sm font-semibold">{it.count}</span>
               <span className="nums w-9 text-right text-xs text-muted-foreground">{occupancyTotal > 0 ? Math.round((it.count / occupancyTotal) * 100) : 0}%</span>
             </Link>
@@ -514,13 +573,13 @@ export default function DashboardPage() {
       <Card className="p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold tracking-tight">Budget vs actual</h2>
-            <p className="text-sm text-muted-foreground">Year to date, prorated</p>
+            <h2 className="font-semibold tracking-tight">{t("Budget vs Actual (YTD)")}</h2>
+            <p className="text-sm text-muted-foreground">{t("Year-to-date income and expenditure")}</p>
           </div>
         </div>
         <div className="space-y-5">
-          <Meter label="Income" actual={budgetVsActual.income.actual} expected={budgetVsActual.income.expected} pct={incPct} over={incOver} fill="var(--chart-1)" goodWhenOver href={`/apartments?${rangeQuery}`} />
-          <Meter label="Expenditure" actual={budgetVsActual.expenditure.actual} expected={budgetVsActual.expenditure.expected} pct={expPct} over={expOver} fill="var(--chart-4)" goodWhenOver={false} href={`/expenses?${rangeQuery}`} />
+          <Meter label={t("Income")} actual={budgetVsActual.income.actual} expected={budgetVsActual.income.expected} pct={incPct} over={incOver} fill="var(--chart-1)" goodWhenOver href={`/apartments?${rangeQuery}`} />
+          <Meter label={t("Expenditure")} actual={budgetVsActual.expenditure.actual} expected={budgetVsActual.expenditure.expected} pct={expPct} over={expOver} fill="var(--chart-4)" goodWhenOver={false} href={`/expenses?${rangeQuery}`} />
         </div>
       </Card>
     ),
@@ -530,8 +589,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--chart-1)_14%,transparent)]"><Wallet className="h-4 w-4" style={{ color: "var(--chart-1)" }} /></span>
             <div>
-              <h2 className="font-semibold tracking-tight">Payments collection grid</h2>
-              <p className="text-sm text-muted-foreground">Paid months per unit · {gridYear}</p>
+              <h2 className="font-semibold tracking-tight">{t("Collection Grid")}</h2>
+              <p className="text-sm text-muted-foreground">{t("Paid months per apartment at a glance, lowest unit first — it follows the search and filters above. C = paid in cash, B = by bank.")}</p>
             </div>
           </div>
           <ViewLink href="/apartments" />
@@ -542,9 +601,9 @@ export default function DashboardPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">Unit</th>
+                    <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">{t("Unit")}</th>
                     {MONTH_LABELS.map((m) => (<th key={m} className="px-1 py-2 text-center font-medium">{m}</th>))}
-                    <th className="px-3 py-2 text-right font-medium">Collected</th>
+                    <th className="px-3 py-2 text-right font-medium">{t("Collected")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -568,13 +627,13 @@ export default function DashboardPage() {
               </table>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--pos)]" /> Paid</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--neg)]" /> Not paid</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm border border-border bg-muted" /> Not due yet</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--pos)]" /> {t("Paid")}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--neg)]" /> {t("Not paid")}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm border border-border bg-muted" /> {t("Not due yet")}</span>
             </div>
           </>
         ) : (
-          <p className="py-10 text-center text-muted-foreground">No apartments yet</p>
+          <p className="py-10 text-center text-muted-foreground">{t("No apartments yet")}</p>
         )}
       </Card>
     ),
@@ -584,8 +643,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--chart-5)_14%,transparent)]"><Repeat className="h-4 w-4" style={{ color: "var(--chart-5)" }} /></span>
             <div>
-              <h2 className="font-semibold tracking-tight">Recurring expenses grid</h2>
-              <p className="text-sm text-muted-foreground">Paid months per recurring expense · {gridYear}</p>
+              <h2 className="font-semibold tracking-tight">{t("Recurring expenses grid")}</h2>
+              <p className="text-sm text-muted-foreground">{t("Paid months per recurring expense")} · {gridYear}</p>
             </div>
           </div>
           <ViewLink href="/expenses" />
@@ -596,9 +655,9 @@ export default function DashboardPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">Expense</th>
+                    <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">{t("Expense")}</th>
                     {MONTH_LABELS.map((m) => (<th key={m} className="px-1 py-2 text-center font-medium">{m}</th>))}
-                    <th className="px-3 py-2 text-right font-medium">Spent</th>
+                    <th className="px-3 py-2 text-right font-medium">{t("Spent")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -620,13 +679,13 @@ export default function DashboardPage() {
               </table>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--pos)]" /> Paid</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--neg)]" /> Not paid</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm border border-border bg-muted" /> Not due yet</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--pos)]" /> {t("Paid")}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-[var(--neg)]" /> {t("Not paid")}</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm border border-border bg-muted" /> {t("Not due yet")}</span>
             </div>
           </>
         ) : (
-          <p className="py-10 text-center text-muted-foreground">No recurring expenses yet</p>
+          <p className="py-10 text-center text-muted-foreground">{t("No recurring expenses yet")}</p>
         )}
       </Card>
     ),
@@ -636,8 +695,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[color-mix(in_oklch,var(--chart-2)_14%,transparent)]"><AlertTriangle className="h-4 w-4" style={{ color: "var(--chart-2)" }} /></span>
             <div>
-              <h2 className="font-semibold tracking-tight">Overdue alerts</h2>
-              <p className="text-sm text-muted-foreground">{overdueAlerts.length} apartment{overdueAlerts.length !== 1 ? "s" : ""} need attention</p>
+              <h2 className="font-semibold tracking-tight">{t("Overdue alerts")}</h2>
+              <p className="text-sm text-muted-foreground">{t("{n} apartments requiring attention", { n: overdueAlerts.length })}</p>
             </div>
           </div>
           <ViewLink href="/apartments?status=overdue" />
@@ -647,11 +706,11 @@ export default function DashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2.5 pr-4 font-medium">Unit</th>
-                  <th className="pb-2.5 pr-4 font-medium">Resident</th>
-                  <th className="pb-2.5 pr-4 font-medium">Overdue</th>
-                  <th className="pb-2.5 pr-4 text-right font-medium">Owed</th>
-                  <th className="pb-2.5 font-medium">Status</th>
+                  <th className="pb-2.5 pr-4 font-medium">{t("Unit")}</th>
+                  <th className="pb-2.5 pr-4 font-medium">{t("Resident")}</th>
+                  <th className="pb-2.5 pr-4 font-medium">{t("Overdue")}</th>
+                  <th className="pb-2.5 pr-4 text-right font-medium">{t("Owed")}</th>
+                  <th className="pb-2.5 font-medium">{t("Status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -659,9 +718,9 @@ export default function DashboardPage() {
                   <tr key={apt.id} className="border-b transition-colors last:border-0 hover:bg-muted/40">
                     <td className="py-2.5 pr-4"><Link href={`/apartments?id=${apt.id}`} className="font-medium text-primary underline-offset-4 hover:underline">{apt.unit_number}</Link></td>
                     <td className="py-2.5 pr-4 text-muted-foreground">{apt.primary_resident_name}</td>
-                    <td className="py-2.5 pr-4"><span className={apt.days_overdue > 0 ? "font-semibold text-[var(--neg)]" : "text-muted-foreground"}>{apt.days_overdue > 0 ? `${apt.days_overdue} days` : "Due soon"}</span></td>
+                    <td className="py-2.5 pr-4"><span className={apt.days_overdue > 0 ? "font-semibold text-[var(--neg)]" : "text-muted-foreground"}>{apt.days_overdue > 0 ? t("{n} days", { n: apt.days_overdue }) : t("Due soon")}</span></td>
                     <td className="nums py-2.5 pr-4 text-right font-medium">{formatCurrency(apt.amount_owed)}</td>
-                    <td className="py-2.5"><Badge variant={apt.payment_status === "overdue" ? "destructive" : "warning"}>{apt.payment_status === "overdue" ? "Overdue" : "Due soon"}</Badge></td>
+                    <td className="py-2.5"><Badge variant={apt.payment_status === "overdue" ? "destructive" : "warning"}>{apt.payment_status === "overdue" ? t("Overdue") : t("Due soon")}</Badge></td>
                   </tr>
                 ))}
               </tbody>
@@ -670,7 +729,7 @@ export default function DashboardPage() {
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--chart-1)_14%,transparent)]"><TrendingUp className="h-5 w-5" style={{ color: "var(--chart-1)" }} /></span>
-            <p className="text-muted-foreground">All apartments are up to date</p>
+            <p className="text-muted-foreground">{t("All apartments are up to date")}</p>
           </div>
         )}
       </Card>
@@ -682,8 +741,8 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <History className="h-5 w-5 text-muted-foreground" />
               <div>
-                <h2 className="font-semibold tracking-tight">Previous years</h2>
-                <p className="text-sm text-muted-foreground">Migrated yearly totals</p>
+                <h2 className="font-semibold tracking-tight">{t("Previous years")}</h2>
+                <p className="text-sm text-muted-foreground">{t("Migrated yearly totals")}</p>
               </div>
             </div>
             <ViewLink href="/settings" />
@@ -692,11 +751,11 @@ export default function DashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2.5 pr-4 font-medium">Year</th>
-                  <th className="pb-2.5 pr-4 text-right font-medium">Income</th>
-                  <th className="pb-2.5 pr-4 text-right font-medium">Expenditure</th>
-                  <th className="pb-2.5 pr-4 text-right font-medium">Net</th>
-                  <th className="pb-2.5 font-medium">Breakdown</th>
+                  <th className="pb-2.5 pr-4 font-medium">{t("Year")}</th>
+                  <th className="pb-2.5 pr-4 text-right font-medium">{t("Income")}</th>
+                  <th className="pb-2.5 pr-4 text-right font-medium">{t("Expenditure")}</th>
+                  <th className="pb-2.5 pr-4 text-right font-medium">{t("Net")}</th>
+                  <th className="pb-2.5 font-medium">{t("Breakdown")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -730,11 +789,92 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{greeting()}</p>
-          <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{state.settings.building_name || "Building"} overview</h1>
+          <p className="text-sm font-medium text-muted-foreground">{t(greeting())}</p>
+          <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{state.settings.building_name || t("Building")} {t("overview")}</h1>
         </div>
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)} className="gap-1.5">
+            <ArrowLeftRight className="h-4 w-4" />
+            {t("Transfer Cash ↔ Bank")}
+          </Button>
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+        </div>
       </div>
+
+      {/* Transfer Dialog */}
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("Transfer Between Cash and Bank")}</DialogTitle>
+            <DialogDescription>{t("Move money between the cash box and the bank account — the balance cards update immediately.")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("Direction")}</Label>
+              <Select value={transferDirection} onValueChange={(v) => setTransferDirection(v as "cash_to_bank" | "bank_to_cash")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash_to_bank">{t("Cash → Bank (deposit)")}</SelectItem>
+                  <SelectItem value="bank_to_cash">{t("Bank → Cash (withdrawal)")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("Current:")} {t("Cash")} {formatCurrency(cash)} · {t("Bank")} {formatCurrency(bank)}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Amount (LE)")}</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Date")}</Label>
+              <Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Notes (optional)")}</Label>
+              <Input
+                placeholder={t("e.g. monthly bank deposit")}
+                value={transferNotes}
+                onChange={(e) => setTransferNotes(e.target.value)}
+              />
+            </div>
+            {state.transfers && state.transfers.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                  {[...state.transfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map((tr) => (
+                    <div key={tr.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">{formatDate(tr.date)}</span>
+                      <span className="flex-1 truncate">{tr.from_method === "cash" ? t("Cash → Bank (deposit)") : t("Bank → Cash (withdrawal)")}</span>
+                      <span className="nums font-medium">{formatCurrency(tr.amount)}</span>
+                      <button
+                        onClick={() => deleteTransfer(tr.id)}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        aria-label={t("Delete transfer")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>{t("Cancel")}</Button>
+            <Button onClick={handleTransfer}>{t("Record Transfer")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {keys.map((k) => (
