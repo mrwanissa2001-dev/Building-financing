@@ -57,6 +57,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCopy,
+  Search,
 } from "lucide-react"
 
 type SortField = "date" | "amount"
@@ -166,6 +167,9 @@ function ExpensesContent() {
 
   // Recurring grid year
   const [gridYear, setGridYear] = useState(() => new Date().getFullYear())
+
+  // Search for the recurring expenses grid
+  const [recurringSearch, setRecurringSearch] = useState("")
 
   const filtersActive =
     filterCategory !== "all" || filterMethod !== "all" || filterDateStart !== "" || filterDateEnd !== "" || filterStatus !== "all"
@@ -306,6 +310,16 @@ function ExpensesContent() {
       .map((s) => ({ ...s, categoryName: catName(s.categoryId) }))
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.vendor.localeCompare(b.vendor))
   }, [filteredExpenses, state.categories])
+
+  const filteredRecurringSeries = useMemo(() => {
+    if (!recurringSearch.trim()) return recurringSeries
+    const q = recurringSearch.toLowerCase()
+    return recurringSeries.filter(
+      (s) =>
+        s.categoryName.toLowerCase().includes(q) ||
+        s.vendor.toLowerCase().includes(q)
+    )
+  }, [recurringSeries, recurringSearch])
 
   function recurringCell(
     series: { startKey: string; interval: number; paidMonths: Set<string> },
@@ -716,14 +730,25 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               {t("One row per recurring expense — it follows the filters above. Non-monthly schedules skip the months in between; edit the first entry's date to shift the starting month. C = paid in cash, B = by bank.")}
             </p>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label={t("Previous year")}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-semibold tabular-nums">{gridYear}</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label={t("Next year")}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 w-48 pl-8 text-sm"
+                placeholder={t("Search expenses...")}
+                value={recurringSearch}
+                onChange={(e) => setRecurringSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y - 1)} aria-label={t("Previous year")}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-semibold tabular-nums">{gridYear}</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setGridYear((y) => y + 1)} aria-label={t("Next year")}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -739,14 +764,14 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recurringSeries.length === 0 ? (
+                {filteredRecurringSeries.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                       {t("No recurring expenses yet — switch on \u201cRecurring\u201d when adding an expense")}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  recurringSeries.map((s) => (
+                  filteredRecurringSeries.map((s) => (
                     <TableRow key={`${s.categoryId}|${s.vendor}`}>
                       <TableCell className="sticky left-0 bg-card whitespace-nowrap">
                         <div className="font-medium capitalize">{t(s.categoryName)}</div>

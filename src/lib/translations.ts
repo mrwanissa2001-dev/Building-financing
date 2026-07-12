@@ -211,6 +211,8 @@ const AR: Record<string, string> = {
   "Copy an AI prompt that converts your raw data into an import-ready CSV":
     "انسخ تعليمات للذكاء الاصطناعي تحوّل بياناتك الخام إلى ملف CSV جاهز للاستيراد",
   "Search by name, unit, or payer...": "ابحث بالاسم أو رقم الوحدة أو الدافع...",
+  "Search apartments...": "ابحث عن الشقق...",
+  "Search expenses...": "ابحث عن المصروفات...",
   "All Buildings": "كل المباني",
   "All Floors": "كل الطوابق",
   "All Status": "كل الحالات",

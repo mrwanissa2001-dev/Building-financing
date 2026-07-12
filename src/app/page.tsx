@@ -18,6 +18,7 @@ import {
   ArrowLeftRight,
   Trash2,
   Download,
+  Search,
 } from "lucide-react"
 import {
   BarChart,
@@ -199,6 +200,9 @@ export default function DashboardPage() {
     const y = new Date().getFullYear()
     return { start: `${y}-01-01`, end: `${y}-12-31` }
   })
+
+  const [collectionSearch, setCollectionSearch] = useState("")
+  const [recurringSearch, setRecurringSearch] = useState("")
   const rangeStart = dateRange.start
   const rangeEnd = dateRange.end
   const inRange = useMemo(
@@ -315,6 +319,16 @@ export default function DashboardPage() {
     return map
   }, [state.payments, gridYear])
 
+  const filteredGridUnits = useMemo(() => {
+    if (!collectionSearch.trim()) return gridUnits
+    const q = collectionSearch.toLowerCase()
+    return gridUnits.filter(
+      (apt) =>
+        apt.unit_number.toLowerCase().includes(q) ||
+        apt.floor.toLowerCase().includes(q)
+    )
+  }, [gridUnits, collectionSearch])
+
   // ── Recurring expenses grid ──
   const recurringSeries = useMemo(() => {
     const byKey = new Map<string, { categoryId: string; vendor: string; startKey: string; interval: number; amount: number; paidMonths: Set<string>; totalByYear: Map<number, number> }>()
@@ -340,6 +354,16 @@ export default function DashboardPage() {
       .map((s) => ({ ...s, categoryName: catName(s.categoryId) }))
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.vendor.localeCompare(b.vendor))
   }, [state.expenses, catName])
+
+  const filteredRecurringSeries = useMemo(() => {
+    if (!recurringSearch.trim()) return recurringSeries
+    const q = recurringSearch.toLowerCase()
+    return recurringSeries.filter(
+      (s) =>
+        s.categoryName.toLowerCase().includes(q) ||
+        s.vendor.toLowerCase().includes(q)
+    )
+  }, [recurringSeries, recurringSearch])
 
   function recurringCell(s: { startKey: string; interval: number; paidMonths: Set<string> }, key: string): MonthCellStatus {
     if (key < s.startKey) return "na"
@@ -663,6 +687,15 @@ export default function DashboardPage() {
         </div>
         {gridUnits.length > 0 ? (
           <>
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-sm"
+                placeholder={t("Search apartments...")}
+                value={collectionSearch}
+                onChange={(e) => setCollectionSearch(e.target.value)}
+              />
+            </div>
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
@@ -673,7 +706,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {gridUnits.map((apt) => {
+                  {filteredGridUnits.map((apt) => {
                     const cells = getMonthCells(apt.id, gridYear)
                     return (
                       <tr key={apt.id} className="border-t border-border hover:bg-muted/40">
@@ -723,6 +756,15 @@ export default function DashboardPage() {
         </div>
         {recurringSeries.length > 0 ? (
           <>
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-sm"
+                placeholder={t("Search expenses...")}
+                value={recurringSearch}
+                onChange={(e) => setRecurringSearch(e.target.value)}
+              />
+            </div>
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
@@ -733,7 +775,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recurringSeries.map((s) => (
+                  {filteredRecurringSeries.map((s) => (
                     <tr key={`${s.categoryId}|${s.vendor}`} className="border-t border-border hover:bg-muted/40">
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-3 py-2">
                         <Link href={`/expenses?category=${s.categoryId}`} className="font-medium capitalize text-primary underline-offset-4 hover:underline">{s.categoryName}</Link>
