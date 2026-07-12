@@ -229,7 +229,7 @@ function ExpensesContent() {
   // Reset to page 1 whenever filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [filterCategory, filterMethod, filterDateStart, filterDateEnd])
+  }, [filterCategory, filterMethod, filterDateStart, filterDateEnd, filterStatus])
 
   const totalPages = Math.max(1, Math.ceil(filteredExpenses.length / PAGE_SIZE))
   const paginatedExpenses = filteredExpenses.slice(
