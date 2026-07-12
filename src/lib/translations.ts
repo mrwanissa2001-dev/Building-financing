@@ -185,6 +185,11 @@ const AR: Record<string, string> = {
   "Current:": "الحالي:",
   "Recent transfers": "التحويلات الأخيرة",
   "Delete transfer": "حذف التحويل",
+  "Edit transfer": "تعديل التحويل",
+  "Update this transfer between the cash box and the bank account.":
+    "عدّل هذا التحويل بين صندوق النقد والحساب البنكي.",
+  "Transfer updated": "تم تحديث التحويل",
+  "Save changes": "حفظ التغييرات",
   "Record Transfer": "تسجيل التحويل",
   "Transfer recorded": "تم تسجيل التحويل",
   "{amount} moved from {from} to {to}.": "تم نقل {amount} من {from} إلى {to}.",

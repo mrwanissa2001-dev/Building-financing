@@ -17,6 +17,7 @@ import {
   Repeat,
   ArrowLeftRight,
   Trash2,
+  Pencil,
   Download,
   Search,
 } from "lucide-react"
@@ -62,7 +63,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { monthKey, currentMonthKey, monthsBetween, monthKeyLabel } from "@/lib/months"
 import type { MonthCellStatus } from "@/lib/computations"
-import type { PaymentMethod } from "@/lib/types"
+import type { PaymentMethod, Transfer } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -164,7 +165,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { state, addTransfer, deleteTransfer } = useStore()
+  const { state, addTransfer, updateTransfer, deleteTransfer } = useStore()
   const { toast } = useToast()
   const {
     dashboardStats,
@@ -186,6 +187,14 @@ export default function DashboardPage() {
   const [transferDate, setTransferDate] = useState(() => new Date().toISOString().split("T")[0])
   const [transferNotes, setTransferNotes] = useState("")
   const [transferOnDashboard, setTransferOnDashboard] = useState(true)
+
+  // Edit-transfer dialog state — non-null editTransfer means a row is being edited
+  const [editTransfer, setEditTransfer] = useState<Transfer | null>(null)
+  const [editDirection, setEditDirection] = useState<"cash_to_bank" | "bank_to_cash">("cash_to_bank")
+  const [editAmount, setEditAmount] = useState("")
+  const [editDate, setEditDate] = useState("")
+  const [editNotes, setEditNotes] = useState("")
+  const [editOnDashboard, setEditOnDashboard] = useState(true)
 
   // Cell-log dialog — shows the entries behind a clicked grid cell
   const [cellLog, setCellLog] = useState<{
@@ -431,6 +440,33 @@ export default function DashboardPage() {
       tr.notes ?? "",
     ])
     downloadCsv(`transfers-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  function openEditTransfer(tr: Transfer) {
+    setEditTransfer(tr)
+    setEditDirection(tr.from_method === "cash" ? "cash_to_bank" : "bank_to_cash")
+    setEditAmount(String(tr.amount))
+    setEditDate(tr.date)
+    setEditNotes(tr.notes ?? "")
+    setEditOnDashboard(tr.on_dashboard)
+  }
+
+  function handleUpdateTransfer() {
+    if (!editTransfer) return
+    const amount = parseAmount(editAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: t("Enter a valid amount"), description: t("The transfer amount must be greater than zero."), variant: "destructive" })
+      return
+    }
+    if (!editDate) {
+      toast({ title: t("Pick a date"), description: t("The transfer needs a date."), variant: "destructive" })
+      return
+    }
+    const fromMethod = editDirection === "cash_to_bank" ? "cash" : "bank"
+    const toMethod = editDirection === "cash_to_bank" ? "bank" : "cash"
+    updateTransfer({ ...editTransfer, amount, from_method: fromMethod, to_method: toMethod, date: editDate, notes: editNotes, on_dashboard: editOnDashboard })
+    toast({ title: t("Transfer updated"), variant: "success" })
+    setEditTransfer(null)
   }
 
   // ── Cell-log openers: show the entries behind a clicked grid cell ──
@@ -994,6 +1030,13 @@ export default function DashboardPage() {
                       <span className="flex-1 truncate">{tr.from_method === "cash" ? t("Cash → Bank (deposit)") : t("Bank → Cash (withdrawal)")}</span>
                       <span className="nums font-medium">{formatCurrency(tr.amount)}</span>
                       <button
+                        onClick={() => openEditTransfer(tr)}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-primary"
+                        aria-label={t("Edit transfer")}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
                         onClick={() => deleteTransfer(tr.id)}
                         className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
                         aria-label={t("Delete transfer")}
@@ -1009,6 +1052,64 @@ export default function DashboardPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransferOpen(false)}>{t("Cancel")}</Button>
             <Button onClick={handleTransfer}>{t("Record Transfer")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transfer Dialog */}
+      <Dialog open={editTransfer !== null} onOpenChange={(o) => !o && setEditTransfer(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("Edit transfer")}</DialogTitle>
+            <DialogDescription>{t("Update this transfer between the cash box and the bank account.")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("Direction")}</Label>
+              <Select value={editDirection} onValueChange={(v) => setEditDirection(v as "cash_to_bank" | "bank_to_cash")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash_to_bank">{t("Cash → Bank (deposit)")}</SelectItem>
+                  <SelectItem value="bank_to_cash">{t("Bank → Cash (withdrawal)")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Amount (LE)")}</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Date")}</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Notes (optional)")}</Label>
+              <Input
+                placeholder={t("e.g. monthly bank deposit")}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div>
+                <Label>{t("Affects dashboard balances")}</Label>
+                <p className="text-xs text-muted-foreground">{t("Off = recorded for reference only; the balance cards don't move.")}</p>
+              </div>
+              <Switch checked={editOnDashboard} onCheckedChange={setEditOnDashboard} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTransfer(null)}>{t("Cancel")}</Button>
+            <Button onClick={handleUpdateTransfer}>{t("Save changes")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

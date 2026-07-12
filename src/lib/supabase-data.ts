@@ -316,6 +316,12 @@ export async function insertTransfer(data: Omit<Transfer, 'created_at'>) {
   return row ? normalizeTransfer(row as Transfer) : null
 }
 
+export async function updateTransferRow(transfer: Transfer) {
+  const { id, created_at, ...rest } = transfer
+  void created_at
+  return updateRow('transfers', id, rest, 'Transfer')
+}
+
 export async function deleteTransferRow(id: string) {
   return deleteRow('transfers', id, 'Transfer')
 }

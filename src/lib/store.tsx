@@ -39,6 +39,7 @@ import {
   updateHistoryRow as sbUpdateHistory,
   deleteHistoryRow as sbDeleteHistory,
   insertTransfer as sbInsertTransfer,
+  updateTransferRow as sbUpdateTransfer,
   deleteTransferRow as sbDeleteTransfer,
   updateSettingsRow as sbUpdateSettings,
 } from './supabase-data'
@@ -101,6 +102,7 @@ type StoreAction =
   | { type: 'UPDATE_HISTORY'; payload: YearlyHistory }
   | { type: 'DELETE_HISTORY'; payload: string }
   | { type: 'ADD_TRANSFER'; payload: Transfer }
+  | { type: 'UPDATE_TRANSFER'; payload: Transfer }
   | { type: 'DELETE_TRANSFER'; payload: string }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
 
@@ -219,6 +221,14 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
         transfers: [action.payload, ...state.transfers],
       }
 
+    case 'UPDATE_TRANSFER':
+      return {
+        ...state,
+        transfers: state.transfers.map((t) =>
+          t.id === action.payload.id ? action.payload : t
+        ),
+      }
+
     case 'DELETE_TRANSFER':
       return {
         ...state,
@@ -288,6 +298,7 @@ interface StoreContextValue {
   updateHistory: (row: YearlyHistory) => void
   deleteHistory: (id: string) => void
   addTransfer: (data: Omit<Transfer, 'id' | 'created_at'>) => Transfer
+  updateTransfer: (transfer: Transfer) => void
   deleteTransfer: (id: string) => void
   updateSettings: (data: Partial<BuildingSettings>) => void
 
@@ -662,6 +673,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     sbInsertTransfer({ ...data, id: t.id })
     return t
   }, [])
+  const updateTransfer = useCallback((transfer: Transfer) => {
+    dispatch({ type: 'UPDATE_TRANSFER', payload: transfer })
+    sbUpdateTransfer(transfer)
+  }, [])
   const deleteTransfer = useCallback((id: string) => {
     dispatch({ type: 'DELETE_TRANSFER', payload: id })
     sbDeleteTransfer(id)
@@ -765,6 +780,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateHistory,
     deleteHistory,
     addTransfer,
+    updateTransfer,
     deleteTransfer,
     updateSettings,
     importPayments,
