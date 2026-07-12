@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -30,7 +30,6 @@ export default function LoginPage() {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
 
-      // Fetch profile to check approval status
       const { data: profile } = await supabase
         .from("profiles")
         .select("status")
@@ -38,7 +37,6 @@ export default function LoginPage() {
         .single()
 
       if (!profile) {
-        // Profile missing — treat as pending
         router.push("/auth/pending")
         return
       }
@@ -58,18 +56,14 @@ export default function LoginPage() {
         return
       }
 
-      // Approved — create active session token
       const sessionToken = crypto.randomUUID()
-      // Revoke any other sessions for this user
       await supabase.from("active_sessions").delete().eq("user_id", data.user.id)
-      // Insert new session
       await supabase.from("active_sessions").insert({
         user_id: data.user.id,
         session_token: sessionToken,
         device_hint: navigator.userAgent.slice(0, 200),
       })
       sessionStorage.setItem("buildfin.session", sessionToken)
-
       router.push("/")
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sign in failed"
@@ -80,11 +74,10 @@ export default function LoginPage() {
   }
 
   function handleGuestDemo() {
-    // Guest session initialization — store start time in sessionStorage
     const session = {
       id: crypto.randomUUID(),
       startedAt: Date.now(),
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      expiresAt: Date.now() + 10 * 60 * 1000,
     }
     sessionStorage.setItem("buildfin.guest.session", JSON.stringify(session))
     router.push("/guest")
@@ -120,5 +113,13 @@ export default function LoginPage() {
         </p>
       </div>
     </AuthCard>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

@@ -74,6 +74,7 @@ import { ChartTooltip } from "@/components/dashboard/chart-tooltip"
 import { CalculatorWidget } from "@/components/dashboard/calculator-widget"
 import { DateRangePicker, rangeLabel, type DateRange } from "@/components/ui/date-range-picker"
 import { NotesWidget } from "@/components/dashboard/notes-widget"
+import { TaskWidget } from "@/components/widgets/task-widget"
 
 // distinct categorical hues so each expense category reads apart in the donut
 const CAT = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)", "var(--cat-5)", "var(--cat-6)"]
@@ -97,6 +98,7 @@ const SPAN: Record<string, string> = {
   history: "lg:col-span-12",
   notes: "lg:col-span-6",
   calculator: "lg:col-span-3",
+  tasks: "lg:col-span-6",
 }
 
 const unitCompare = (a: string, b: string) =>
@@ -900,6 +902,7 @@ export default function DashboardPage() {
       </Card>
     ),
     notes: <NotesWidget />,
+    tasks: <TaskWidget />,
     history:
       state.history.length > 0 ? (
         <Card className="p-5">

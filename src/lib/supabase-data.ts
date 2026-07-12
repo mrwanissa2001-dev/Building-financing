@@ -8,6 +8,7 @@ import type {
   YearlyHistory,
   Transfer,
   BuildingSettings,
+  Task,
 } from './types'
 
 export const DEFAULT_SETTINGS: BuildingSettings = {
@@ -349,4 +350,62 @@ export async function updateSettingsRow(data: Partial<BuildingSettings>) {
   }
   reportSyncError('Settings were not saved to the database', 'too many unknown columns — run the latest supabase migrations')
   return false
+}
+
+// ── Session management helpers ──
+
+export async function createActiveSession(userId: string, sessionToken: string, deviceHint: string | null): Promise<void> {
+  if (!supabase) return
+  await supabase.from('active_sessions').delete().eq('user_id', userId)
+  await supabase.from('active_sessions').insert({ user_id: userId, session_token: sessionToken, device_hint: deviceHint })
+}
+
+export async function revokeAllSessions(userId: string): Promise<void> {
+  if (!supabase) return
+  await supabase.from('active_sessions').delete().eq('user_id', userId)
+}
+
+export async function checkSessionValid(sessionToken: string): Promise<boolean> {
+  if (!supabase) return false
+  const { count } = await supabase
+    .from('active_sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_token', sessionToken)
+  return (count ?? 0) > 0
+}
+
+export async function heartbeatSession(sessionToken: string): Promise<void> {
+  if (!supabase) return
+  await supabase
+    .from('active_sessions')
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq('session_token', sessionToken)
+}
+
+// ── Tasks ──
+
+export async function getTasks(): Promise<Task[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.warn('tasks not available:', error.message)
+    return []
+  }
+  return (data as Task[])
+}
+
+export async function insertTask(data: Omit<Task, 'id' | 'created_at' | 'user_id'>): Promise<Task | null> {
+  const row = await insertRow('tasks', { ...data, id: crypto.randomUUID() }, 'Task')
+  return row ? (row as Task) : null
+}
+
+export async function updateTaskRow(id: string, data: Partial<Omit<Task, 'id' | 'created_at' | 'user_id'>>): Promise<void> {
+  await updateRow('tasks', id, data, 'Task')
+}
+
+export async function deleteTaskRow(id: string): Promise<void> {
+  await deleteRow('tasks', id, 'Task')
 }
