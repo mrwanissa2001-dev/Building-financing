@@ -371,6 +371,7 @@ function buildRecurringExpenses(expenses: Expense[]): Omit<Expense, 'id' | 'crea
         vendor: latest.vendor,
         recurring: true,
         recurring_interval: interval,
+        paid: latest.paid ?? true,
         notes: '(auto recurring)',
       })
       mk = addMonthsToKey(mk, interval)
@@ -711,6 +712,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           vendor: r.vendor,
           recurring: r.recurring,
           recurring_interval: Math.max(1, r.recurring_interval || 1),
+          paid: true,
           notes: r.notes,
         }
         const e: Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }

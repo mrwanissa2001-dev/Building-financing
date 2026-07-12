@@ -56,9 +56,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { monthKey, currentMonthKey, monthsBetween, monthKeyLabel } from "@/lib/months"
 import type { MonthCellStatus } from "@/lib/computations"
+import type { PaymentMethod } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -181,6 +183,16 @@ export default function DashboardPage() {
   const [transferAmount, setTransferAmount] = useState("")
   const [transferDate, setTransferDate] = useState(() => new Date().toISOString().split("T")[0])
   const [transferNotes, setTransferNotes] = useState("")
+  const [transferOnDashboard, setTransferOnDashboard] = useState(true)
+
+  // Cell-log dialog — shows the entries behind a clicked grid cell
+  const [cellLog, setCellLog] = useState<{
+    title: string
+    subtitle: string
+    href: string
+    empty: string
+    rows: { id: string; date: string; label: string; sub: string; amount: number; method: PaymentMethod }[]
+  } | null>(null)
 
   const [dateRange, setDateRange] = useState<DateRange>(() => {
     const y = new Date().getFullYear()
@@ -196,7 +208,7 @@ export default function DashboardPage() {
   // Range-filtered totals for the stat cards
   const rangeStats = useMemo(() => {
     const pays = state.payments.filter((p) => inRange(p.date_paid))
-    const exps = state.expenses.filter((e) => inRange(e.date))
+    const exps = state.expenses.filter((e) => inRange(e.date) && e.paid !== false)
     const collected = pays.reduce((s, p) => s + p.amount, 0)
     const spent = exps.reduce((s, e) => s + e.amount, 0)
     return { collected, spent, net: collected - spent }
@@ -260,7 +272,7 @@ export default function DashboardPage() {
     const income = new Map<string, number>()
     const expense = new Map<string, number>()
     for (const p of state.payments) if (inRange(p.date_paid)) income.set(monthKey(p.date_paid), (income.get(monthKey(p.date_paid)) ?? 0) + p.amount)
-    for (const e of state.expenses) if (inRange(e.date)) expense.set(monthKey(e.date), (expense.get(monthKey(e.date)) ?? 0) + e.amount)
+    for (const e of state.expenses) if (inRange(e.date) && e.paid !== false) expense.set(monthKey(e.date), (expense.get(monthKey(e.date)) ?? 0) + e.amount)
     return keys.map((k) => ({ month: monthKeyLabel(k), income: income.get(k) ?? 0, expenses: expense.get(k) ?? 0 }))
   }, [state.payments, state.expenses, rangeStart, rangeEnd, inRange])
 
@@ -273,7 +285,7 @@ export default function DashboardPage() {
   const donutData = useMemo(() => {
     const map = new Map<string, { id: string; category: string; amount: number }>()
     for (const e of state.expenses) {
-      if (!inRange(e.date)) continue
+      if (!inRange(e.date) || e.paid === false) continue
       const cur = map.get(e.category_id) ?? { id: e.category_id, category: catName(e.category_id), amount: 0 }
       cur.amount += e.amount
       map.set(e.category_id, cur)
@@ -315,9 +327,13 @@ export default function DashboardPage() {
         byKey.set(key, s)
       }
       if (mk < s.startKey) s.startKey = mk
-      s.paidMonths.add(mk)
-      const yr = Number(mk.slice(0, 4))
-      s.totalByYear.set(yr, (s.totalByYear.get(yr) ?? 0) + e.amount)
+      // an unpaid recurring entry keeps the schedule but the month stays
+      // "not paid" and its money stays out of the yearly total
+      if (e.paid !== false) {
+        s.paidMonths.add(mk)
+        const yr = Number(mk.slice(0, 4))
+        s.totalByYear.set(yr, (s.totalByYear.get(yr) ?? 0) + e.amount)
+      }
     }
     return [...byKey.values()]
       .map((s) => ({ ...s, categoryName: catName(s.categoryId) }))
@@ -366,7 +382,7 @@ export default function DashboardPage() {
     }
     const fromMethod = transferDirection === "cash_to_bank" ? "cash" : "bank"
     const toMethod = transferDirection === "cash_to_bank" ? "bank" : "cash"
-    addTransfer({ amount, from_method: fromMethod, to_method: toMethod, date: transferDate, notes: transferNotes })
+    addTransfer({ amount, from_method: fromMethod, to_method: toMethod, date: transferDate, notes: transferNotes, on_dashboard: transferOnDashboard })
     toast({
       title: t("Transfer recorded"),
       description: t("{amount} moved from {from} to {to}.", { amount: formatCurrency(amount), from: t(fromMethod), to: t(toMethod) }),
@@ -377,9 +393,44 @@ export default function DashboardPage() {
     setTransferOpen(false)
   }
 
-  const now = new Date()
-  const yy = now.getFullYear()
-  const mm = String(now.getMonth() + 1).padStart(2, "0")
+  // ── Cell-log openers: show the entries behind a clicked grid cell ──
+  function openCollectionCell(apt: { id: string; unit_number: string }, monthIndex: number) {
+    const key = `${gridYear}-${String(monthIndex + 1).padStart(2, "0")}`
+    const rows = state.payments
+      .filter((p) => {
+        if (p.apartment_id !== apt.id) return false
+        if (monthKey(p.date_paid) === key) return true
+        const ps = p.period_start ? monthKey(p.period_start) : null
+        const pe = p.period_end ? monthKey(p.period_end) : ps
+        return ps !== null && pe !== null && ps <= key && key <= pe
+      })
+      .sort((a, b) => b.date_paid.localeCompare(a.date_paid))
+      .map((p) => ({ id: p.id, date: p.date_paid, label: p.payer_name || t("Payment"), sub: p.notes || "", amount: p.amount, method: p.method }))
+    setCellLog({
+      title: `${t("Unit")} ${apt.unit_number}`,
+      subtitle: `${MONTH_LABELS[monthIndex]} ${gridYear}`,
+      href: `/apartments?id=${apt.id}`,
+      empty: t("No payment recorded for this month."),
+      rows,
+    })
+  }
+
+  function openRecurringCell(s: { categoryId: string; categoryName: string; vendor: string }, monthIndex: number) {
+    const key = `${gridYear}-${String(monthIndex + 1).padStart(2, "0")}`
+    const vend = s.vendor.trim().toLowerCase()
+    const rows = state.expenses
+      .filter((e) => e.category_id === s.categoryId && e.vendor.trim().toLowerCase() === vend && monthKey(e.date) === key)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((e) => ({ id: e.id, date: e.date, label: e.paid === false ? t("Not paid") : t("Paid"), sub: e.notes || "", amount: e.amount, method: e.method }))
+    setCellLog({
+      title: `${s.categoryName}${s.vendor ? ` · ${s.vendor}` : ""}`,
+      subtitle: `${MONTH_LABELS[monthIndex]} ${gridYear}`,
+      href: `/expenses?category=${s.categoryId}`,
+      empty: t("No expense recorded for this month."),
+      rows,
+    })
+  }
+
   const rangeQuery = `start=${rangeStart}&end=${rangeEnd}`
 
   const heroDeltaUp = balanceDelta !== null && balanceDelta >= 0
@@ -616,7 +667,13 @@ export default function DashboardPage() {
                         </td>
                         {cells.map((s, i) => (
                           <td key={i} className="px-1 py-2 text-center">
-                            <div className={cn("mx-auto h-4 w-6 rounded-sm", cellClass(s))} title={`${MONTH_LABELS[i]} ${gridYear}: ${cellTitle(s)}`} />
+                            <button
+                              type="button"
+                              onClick={() => openCollectionCell(apt, i)}
+                              className={cn("mx-auto block h-4 w-6 rounded-sm transition-transform hover:scale-125 hover:ring-2 hover:ring-ring", cellClass(s))}
+                              title={`${MONTH_LABELS[i]} ${gridYear}: ${cellTitle(s)}`}
+                              aria-label={`${apt.unit_number} · ${MONTH_LABELS[i]} ${gridYear}`}
+                            />
                           </td>
                         ))}
                         <td className="nums whitespace-nowrap px-3 py-2 text-right font-medium">{formatCurrency(collectedByUnit.get(apt.id) ?? 0)}</td>
@@ -670,7 +727,17 @@ export default function DashboardPage() {
                       {Array.from({ length: 12 }, (_, i) => {
                         const key = `${gridYear}-${String(i + 1).padStart(2, "0")}`
                         const st = recurringCell(s, key)
-                        return (<td key={i} className="px-1 py-2 text-center"><div className={cn("mx-auto h-4 w-6 rounded-sm", cellClass(st))} title={`${MONTH_LABELS[i]} ${gridYear}: ${cellTitle(st)}`} /></td>)
+                        return (
+                          <td key={i} className="px-1 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => openRecurringCell(s, i)}
+                              className={cn("mx-auto block h-4 w-6 rounded-sm transition-transform hover:scale-125 hover:ring-2 hover:ring-ring", cellClass(st))}
+                              title={`${MONTH_LABELS[i]} ${gridYear}: ${cellTitle(st)}`}
+                              aria-label={`${s.categoryName} · ${MONTH_LABELS[i]} ${gridYear}`}
+                            />
+                          </td>
+                        )
                       })}
                       <td className="nums whitespace-nowrap px-3 py-2 text-right font-medium">{formatCurrency(s.totalByYear.get(gridYear) ?? 0)}</td>
                     </tr>
@@ -847,6 +914,13 @@ export default function DashboardPage() {
                 onChange={(e) => setTransferNotes(e.target.value)}
               />
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div>
+                <Label>{t("Affects dashboard balances")}</Label>
+                <p className="text-xs text-muted-foreground">{t("Off = recorded for reference only; the balance cards don't move.")}</p>
+              </div>
+              <Switch checked={transferOnDashboard} onCheckedChange={setTransferOnDashboard} />
+            </div>
             {state.transfers && state.transfers.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">{t("Recent transfers")}</p>
@@ -873,6 +947,41 @@ export default function DashboardPage() {
             <Button variant="outline" onClick={() => setTransferOpen(false)}>{t("Cancel")}</Button>
             <Button onClick={handleTransfer}>{t("Record Transfer")}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cell log — the payments/expenses behind a clicked grid cell */}
+      <Dialog open={cellLog !== null} onOpenChange={(o) => !o && setCellLog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{cellLog?.title}</DialogTitle>
+            <DialogDescription>{cellLog?.subtitle}</DialogDescription>
+          </DialogHeader>
+          <div className="py-1">
+            {cellLog && cellLog.rows.length > 0 ? (
+              <div className="max-h-72 space-y-1.5 overflow-y-auto">
+                {cellLog.rows.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{r.label}</p>
+                      <p className="truncate text-xs text-muted-foreground">{formatDate(r.date)}{r.sub ? ` · ${r.sub}` : ""}</p>
+                    </div>
+                    <Badge variant={r.method === "cash" ? "outline" : "secondary"}>{r.method === "cash" ? t("Cash") : t("Bank")}</Badge>
+                    <span className="nums shrink-0 font-semibold">{formatCurrency(r.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-muted-foreground">{cellLog?.empty}</p>
+            )}
+          </div>
+          {cellLog && (
+            <DialogFooter>
+              <Link href={cellLog.href} onClick={() => setCellLog(null)} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                {t("Open full log")} <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -90,6 +90,7 @@ interface ExpenseFormData {
   recurring: boolean
   recurring_interval: number
   months_already_paid: number
+  paid: boolean
   notes: string
 }
 
@@ -102,6 +103,7 @@ const emptyForm: ExpenseFormData = {
   recurring: false,
   recurring_interval: 1,
   months_already_paid: 0,
+  paid: true,
   notes: "",
 }
 
@@ -133,6 +135,13 @@ function ExpensesContent() {
   // Delete confirmation state
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
+  // Cell-log dialog — the expenses behind a clicked recurring-grid cell
+  const [cellLog, setCellLog] = useState<{
+    title: string
+    subtitle: string
+    rows: { id: string; date: string; paid: boolean; sub: string; amount: number; method: PaymentMethod }[]
+  } | null>(null)
+
   // Filter state — starts from the URL so dashboard cards can link
   // here with filters preset
   const [filterCategory, setFilterCategory] = useState(() => searchParams.get("category") ?? "all")
@@ -142,6 +151,10 @@ function ExpensesContent() {
   })
   const [filterDateStart, setFilterDateStart] = useState(() => searchParams.get("start") ?? "")
   const [filterDateEnd, setFilterDateEnd] = useState(() => searchParams.get("end") ?? "")
+  const [filterStatus, setFilterStatus] = useState(() => {
+    const v = searchParams.get("status")
+    return v === "paid" || v === "unpaid" ? v : "all"
+  })
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>("date")
@@ -151,13 +164,14 @@ function ExpensesContent() {
   const [gridYear, setGridYear] = useState(() => new Date().getFullYear())
 
   const filtersActive =
-    filterCategory !== "all" || filterMethod !== "all" || filterDateStart !== "" || filterDateEnd !== ""
+    filterCategory !== "all" || filterMethod !== "all" || filterDateStart !== "" || filterDateEnd !== "" || filterStatus !== "all"
 
   function resetFilters() {
     setFilterCategory("all")
     setFilterMethod("all")
     setFilterDateStart("")
     setFilterDateEnd("")
+    setFilterStatus("all")
   }
 
   // Filtered and sorted expenses
@@ -170,6 +184,12 @@ function ExpensesContent() {
 
     if (filterMethod !== "all") {
       result = result.filter((e) => e.method === filterMethod)
+    }
+
+    if (filterStatus !== "all") {
+      result = result.filter((e) =>
+        filterStatus === "unpaid" ? e.paid === false : e.paid !== false
+      )
     }
 
     if (filterDateStart) {
@@ -195,6 +215,7 @@ function ExpensesContent() {
     state.expenses,
     filterCategory,
     filterMethod,
+    filterStatus,
     filterDateStart,
     filterDateEnd,
     sortField,
@@ -251,12 +272,16 @@ function ExpensesContent() {
         s.amount = e.amount
         s.vendor = e.vendor
       }
-      s.paidMonths.add(mk)
-      const letter = e.method === "bank" ? "B" : "C"
-      const prev = s.methodByMonth.get(mk)
-      s.methodByMonth.set(mk, prev && prev !== letter ? "C/B" : letter)
-      const y = Number(mk.slice(0, 4))
-      s.totalByYear.set(y, (s.totalByYear.get(y) ?? 0) + e.amount)
+      // an unpaid entry keeps the schedule but leaves the month "not paid"
+      // and its money out of the yearly total
+      if (e.paid !== false) {
+        s.paidMonths.add(mk)
+        const letter = e.method === "bank" ? "B" : "C"
+        const prev = s.methodByMonth.get(mk)
+        s.methodByMonth.set(mk, prev && prev !== letter ? "C/B" : letter)
+        const y = Number(mk.slice(0, 4))
+        s.totalByYear.set(y, (s.totalByYear.get(y) ?? 0) + e.amount)
+      }
     }
 
     const catName = (id: string) =>
@@ -281,6 +306,23 @@ function ExpensesContent() {
   function getCategoryName(categoryId: string): string {
     const cat = state.categories.find((c) => c.id === categoryId)
     return cat ? cat.name : "Unknown"
+  }
+
+  function openRecurringCell(
+    series: { categoryId: string; categoryName: string; vendor: string },
+    monthIndex: number
+  ) {
+    const key = `${gridYear}-${String(monthIndex + 1).padStart(2, "0")}`
+    const vend = series.vendor.trim().toLowerCase()
+    const rows = state.expenses
+      .filter((e) => e.category_id === series.categoryId && e.vendor.trim().toLowerCase() === vend && monthKey(e.date) === key)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((e) => ({ id: e.id, date: e.date, paid: e.paid !== false, sub: e.notes || "", amount: e.amount, method: e.method }))
+    setCellLog({
+      title: `${series.categoryName}${series.vendor ? ` · ${series.vendor}` : ""}`,
+      subtitle: `${MONTH_LABELS[monthIndex]} ${gridYear}`,
+      rows,
+    })
   }
 
   // people working under a category — offered as vendor choices
@@ -318,6 +360,7 @@ function ExpensesContent() {
       recurring: expense.recurring ?? false,
       recurring_interval: Math.max(1, expense.recurring_interval ?? 1),
       months_already_paid: 0,
+      paid: expense.paid ?? true,
       notes: expense.notes,
     })
     const people = peopleFor(expense.category_id)
@@ -359,6 +402,7 @@ function ExpensesContent() {
         vendor: form.vendor,
         recurring: form.recurring,
         recurring_interval: form.recurring_interval,
+        paid: form.paid,
         notes: form.notes,
       })
     } else {
@@ -371,6 +415,7 @@ function ExpensesContent() {
         vendor: form.vendor,
         recurring: form.recurring,
         recurring_interval: form.recurring_interval,
+        paid: form.paid,
         notes: form.notes,
       })
 
@@ -393,6 +438,7 @@ function ExpensesContent() {
             vendor: form.vendor,
             recurring: true,
             recurring_interval: interval,
+            paid: true,
             notes: form.notes,
           })
         }
@@ -605,6 +651,22 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             </Select>
           </div>
 
+          <div className="min-w-0">
+            <Label className="mb-1.5 block text-xs text-muted-foreground">
+              {t("Payment Status")}
+            </Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder={t("All")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All")}</SelectItem>
+                <SelectItem value="paid">{t("Paid")}</SelectItem>
+                <SelectItem value="unpaid">{t("Not paid")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {filtersActive && (
             <Button variant="ghost" onClick={resetFilters} className="shrink-0">
               <RotateCcw className="mr-1 h-4 w-4" /> {t("Reset Filters")}
@@ -684,12 +746,14 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                         const letter = status === "paid" ? s.methodByMonth.get(key) : undefined
                         return (
                           <TableCell key={i} className="px-1 py-2 text-center">
-                            <div
-                              className={cn("mx-auto flex h-5 w-7 items-center justify-center rounded-sm text-[9px] font-bold text-white", recurringCellClass(status))}
+                            <button
+                              type="button"
+                              onClick={() => openRecurringCell(s, i)}
+                              className={cn("mx-auto flex h-5 w-7 items-center justify-center rounded-sm text-[9px] font-bold text-white transition-transform hover:scale-110 hover:ring-2 hover:ring-ring", recurringCellClass(status))}
                               title={`${s.categoryName} (${s.vendor}) — ${MONTH_LABELS[i]} ${gridYear}: ${recurringCellTitle(status)}${letter ? ` (${letter === "C/B" ? "cash + bank" : letter === "C" ? "cash" : "bank"})` : ""}`}
                             >
                               {letter ?? ""}
-                            </div>
+                            </button>
                           </TableCell>
                         )
                       })}
@@ -742,6 +806,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   </button>
                 </TableHead>
                 <TableHead>{t("Method")}</TableHead>
+                <TableHead>{t("Payment Status")}</TableHead>
                 <TableHead>{t("Recurring")}</TableHead>
                 <TableHead>{t("Notes")}</TableHead>
                 <TableHead className="w-[80px]">{t("Actions")}</TableHead>
@@ -751,7 +816,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               {filteredExpenses.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {t("No expenses found")}
@@ -778,6 +843,17 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                       >
                         {expense.method === "cash" ? t("Cash") : t("Bank")}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        onClick={() => updateExpense({ ...expense, paid: expense.paid === false })}
+                        title={t("Click to toggle paid / not paid")}
+                      >
+                        <Badge variant={expense.paid === false ? "destructive" : "success"} className="cursor-pointer whitespace-nowrap">
+                          {expense.paid === false ? t("Not paid") : t("Paid")}
+                        </Badge>
+                      </button>
                     </TableCell>
                     <TableCell>
                       {expense.recurring ? (
@@ -975,6 +1051,24 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                 )}
               </div>
 
+              <div className="flex items-center justify-between rounded-lg border border-border p-3 sm:col-span-2">
+                <div>
+                  <Label>{t("Payment Status")}</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("Off = logged as a bill still owed; it stays out of dashboard totals until paid.")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {form.paid ? t("Paid") : t("Not paid")}
+                  </span>
+                  <Switch
+                    checked={form.paid}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, paid: v }))}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1060,6 +1154,33 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cell log — the expenses behind a clicked recurring-grid cell */}
+      <Dialog open={cellLog !== null} onOpenChange={(o) => !o && setCellLog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="capitalize">{cellLog?.title}</DialogTitle>
+            <DialogDescription>{cellLog?.subtitle}</DialogDescription>
+          </DialogHeader>
+          {cellLog && cellLog.rows.length > 0 ? (
+            <div className="max-h-72 space-y-1.5 overflow-y-auto">
+              {cellLog.rows.map((r) => (
+                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{formatDate(r.date)}</p>
+                    {r.sub && <p className="truncate text-xs text-muted-foreground">{r.sub}</p>}
+                  </div>
+                  <Badge variant={r.method === "cash" ? "outline" : "secondary"}>{r.method === "cash" ? t("Cash") : t("Bank")}</Badge>
+                  <Badge variant={r.paid ? "success" : "destructive"}>{r.paid ? t("Paid") : t("Not paid")}</Badge>
+                  <span className="shrink-0 font-semibold">{formatCurrency(r.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-muted-foreground">{t("No expense recorded for this month.")}</p>
+          )}
         </DialogContent>
       </Dialog>
 

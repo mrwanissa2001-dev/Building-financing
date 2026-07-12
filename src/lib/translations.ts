@@ -192,6 +192,15 @@ const AR: Record<string, string> = {
   "The transfer amount must be greater than zero.": "يجب أن يكون مبلغ التحويل أكبر من صفر.",
   "Pick a date": "اختر تاريخًا",
   "The transfer needs a date.": "التحويل يحتاج إلى تاريخ.",
+  "Affects dashboard balances": "يؤثر على أرصدة لوحة التحكم",
+  "Off = recorded for reference only; the balance cards don't move.":
+    "إيقاف = يُسجَّل للمرجعية فقط؛ لا تتغير بطاقات الرصيد.",
+  "Off = record-only; the cash/bank splits below never touch the dashboard.":
+    "إيقاف = سجل فقط؛ لن يمس تقسيم النقد/البنك أدناه لوحة التحكم.",
+  "Payment": "دفعة",
+  "Open full log": "فتح السجل الكامل",
+  "No payment recorded for this month.": "لا توجد دفعة مسجلة لهذا الشهر.",
+  "No expense recorded for this month.": "لا يوجد مصروف مسجل لهذا الشهر.",
 
   // ── Apartments page ──
   "Add Apartment": "إضافة شقة",
@@ -344,6 +353,9 @@ const AR: Record<string, string> = {
   "The expense date is required.": "تاريخ المصروف مطلوب.",
   "Enter a vendor": "أدخل المورّد",
   "Say who was paid — pick a person or type a name.": "حدد من استلم المال — اختر شخصًا أو اكتب اسمًا.",
+  "Click to toggle paid / not paid": "اضغط للتبديل بين مدفوع / غير مدفوع",
+  "Off = logged as a bill still owed; it stays out of dashboard totals until paid.":
+    "إيقاف = يُسجَّل كفاتورة مستحقة؛ يبقى خارج إجماليات لوحة التحكم حتى يُدفع.",
 
   // ── Expenses page (recurring) ──
   "Additional months already paid": "أشهر إضافية مدفوعة بالفعل",
