@@ -157,7 +157,7 @@ export default function ApartmentsPage() {
 }
 
 function ApartmentsContent() {
-  const { state, addApartment, updateApartment, deleteApartment, addPayment, updatePayment, deletePayment, importPayments } = useStore()
+  const { state, addApartment, updateApartment, deleteApartment, addPayment, updatePayment, deletePayment, importApartments, importPayments } = useStore()
   const { visibleKeys } = useLayout()
   const { apartmentsWithStatus, getPaymentsForApartment, getMonthCells, getCoverage } = useComputed()
   const { toast } = useToast()
@@ -208,6 +208,7 @@ function ApartmentsContent() {
   const [exportPaymentEnd, setExportPaymentEnd] = useState("")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const aptFileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const id = searchParams.get("id")
@@ -646,6 +647,84 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
       )
   }
 
+  // Derive the floor from a unit number when the CSV omits it: mezzanine
+  // units keep their "M1"/"M2" label; numbered units drop the last two
+  // digits (101 → 1, 1304 → 13), defaulting to "1".
+  function floorFromUnit(unit: string): string {
+    const u = unit.trim()
+    if (/^M/i.test(u)) return u.toUpperCase()
+    const digits = u.replace(/\D/g, "")
+    if (digits.length <= 2) return "1"
+    return String(parseInt(digits.slice(0, digits.length - 2), 10) || 1)
+  }
+
+  const APARTMENTS_CSV_PROMPT = `Convert my apartment/unit records into a CSV file with EXACTLY this header row (lowercase, comma-separated, in this order):
+
+unit_number,floor,building_no,primary_resident_name,secondary_resident_name,phone,phone2,email,monthly_due_amount,occupancy_status,notes
+
+Rules for each column:
+- unit_number: the unit's number/label exactly (e.g. 101, M1) (required)
+- floor: the floor label; leave empty to derive it from the unit number
+- building_no: building number, or empty for 1
+- primary_resident_name: main resident/owner name
+- secondary_resident_name: second resident, or empty
+- phone: primary phone, digits only, keep any leading zero (wrap in quotes)
+- phone2: secondary phone, or empty
+- email: or empty
+- monthly_due_amount: plain number, the monthly rent (e.g. 450)
+- occupancy_status: one of active, mia, traveling_but_paying (default active)
+- notes: free text, or empty
+
+Wrap any value containing a comma or a leading zero in double quotes. Output only the CSV content, no explanations, no markdown code fences.`
+
+  function copyApartmentsCsvPrompt() {
+    navigator.clipboard
+      .writeText(APARTMENTS_CSV_PROMPT)
+      .then(() => toast({ title: t("Prompt copied"), description: t("Paste it to an AI with your raw data to get an import-ready CSV."), variant: "success" }))
+      .catch(() => toast({ title: t("Copy failed"), description: t("Your browser blocked clipboard access."), variant: "destructive" }))
+  }
+
+  function handleImportApartmentsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const objs = csvToObjects(String(reader.result || ""))
+      let skipped = 0
+      const rows: Omit<Apartment, "id" | "created_at">[] = []
+      for (const o of objs) {
+        const unit = (o.unit_number || "").trim()
+        if (!unit) { skipped++; continue }
+        const statusRaw = (o.occupancy_status || "").toLowerCase()
+        const status: OccupancyStatus =
+          statusRaw === "mia" || statusRaw === "traveling_but_paying" ? statusRaw : "active"
+        rows.push({
+          unit_number: unit,
+          building_no: Math.max(1, parseInt(o.building_no || "1", 10) || 1),
+          floor: (o.floor || "").trim() || floorFromUnit(unit),
+          primary_resident_name: o.primary_resident_name || "",
+          secondary_resident_name: o.secondary_resident_name || "",
+          phone: o.phone || "",
+          phone2: o.phone2 || "",
+          email: o.email || "",
+          payment_interval: "monthly",
+          monthly_due_amount: parseAmount(o.monthly_due_amount || "0") || 0,
+          occupancy_status: status,
+          notes: o.notes || "",
+        })
+      }
+      const n = importApartments(rows)
+      const dupes = rows.length - n
+      toast({
+        title: t("Import complete"),
+        description: t("{n} apartments imported", { n }) + (dupes ? t(", {n} already existed", { n: dupes }) : "") + (skipped ? t(", {n} rows skipped", { n: skipped }) : ""),
+        variant: n ? "success" : "destructive",
+      })
+      if (aptFileInputRef.current) aptFileInputRef.current.value = ""
+    }
+    reader.readAsText(file)
+  }
+
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1036,15 +1115,28 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           <Button variant="outline" onClick={() => openAddPaymentFor(null)}>
             <DollarSign className="mr-1 h-4 w-4" /> {t("Add Payment")}
           </Button>
+          <Button variant="outline" onClick={() => aptFileInputRef.current?.click()} title={t("Bulk-create apartments from a CSV")}>
+            <Upload className="mr-1 h-4 w-4" /> {t("Import Apartments")}
+          </Button>
           <Button variant="outline" onClick={exportPaymentsCsv}>
-            <Download className="mr-1 h-4 w-4" /> {t("Export CSV")}
+            <Download className="mr-1 h-4 w-4" /> {t("Export Payments CSV")}
           </Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-1 h-4 w-4" /> {t("Import CSV")}
+            <Upload className="mr-1 h-4 w-4" /> {t("Import Payments")}
+          </Button>
+          <Button variant="outline" onClick={copyApartmentsCsvPrompt} title={t("Copy an AI prompt that converts your raw data into an import-ready apartments CSV")}>
+            <ClipboardCopy className="mr-1 h-4 w-4" /> {t("Apartments Prompt")}
           </Button>
           <Button variant="outline" onClick={copyPaymentsCsvPrompt} title={t("Copy an AI prompt that converts your raw data into an import-ready CSV")}>
-            <ClipboardCopy className="mr-1 h-4 w-4" /> {t("Copy CSV Prompt")}
+            <ClipboardCopy className="mr-1 h-4 w-4" /> {t("Payments Prompt")}
           </Button>
+          <input
+            ref={aptFileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleImportApartmentsFile}
+          />
           <input
             ref={fileInputRef}
             type="file"

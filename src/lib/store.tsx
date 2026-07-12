@@ -336,6 +336,7 @@ interface StoreContextValue {
   updateTask: (task: Task) => void
   deleteTask: (id: string) => void
 
+  importApartments: (rows: Omit<Apartment, 'id' | 'created_at'>[]) => number
   importPayments: (rows: Omit<Payment, 'id' | 'created_at'>[]) => number
   importExpenses: (
     rows: {
@@ -742,6 +743,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // -- CSV bulk import --
 
+  // Bulk-create apartments, skipping any unit_number already registered so
+  // re-running an import never doubles up existing units.
+  const importApartments = useCallback(
+    (rows: Omit<Apartment, 'id' | 'created_at'>[]): number => {
+      const existing = new Set(
+        state.apartments.map((a) => a.unit_number.trim().toLowerCase())
+      )
+      let imported = 0
+      for (const data of rows) {
+        const key = data.unit_number.trim().toLowerCase()
+        if (!key || existing.has(key)) continue
+        existing.add(key)
+        const apt: Apartment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+        dispatch({ type: 'ADD_APARTMENT', payload: apt })
+        sbInsertApartment({ ...data, id: apt.id })
+        imported++
+      }
+      return imported
+    },
+    [state.apartments]
+  )
+
   const importPayments = useCallback(
     (rows: Omit<Payment, 'id' | 'created_at'>[]): number => {
       for (const data of rows) {
@@ -840,6 +863,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     addTask,
     updateTask,
     deleteTask,
+    importApartments,
     importPayments,
     importExpenses,
   }
