@@ -21,8 +21,9 @@ import {
   CalendarDays,
   FileText,
   LogOut,
+  ShieldCheck,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -34,6 +35,8 @@ const navItems = [
   { href: "/appearance", label: "Settings", icon: SlidersHorizontal },
 ]
 
+const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck }
+
 interface SidebarProps {
   theme: "light" | "dark"
   toggleTheme: () => void
@@ -43,6 +46,7 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const { state } = useStore()
   const { t, lang, setLang } = useI18n()
   const buildingName = state.settings.building_name
@@ -54,6 +58,21 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
     sessionStorage.removeItem("buildfin.session")
     router.push("/auth/login")
   }
+
+  useEffect(() => {
+    if (!supabase) return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      supabase!
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", session.user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.is_admin) setIsAdmin(true)
+        })
+    })
+  }, [])
 
   return (
     <>
@@ -100,7 +119,7 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4">
-          {navItems.map((item) => {
+          {[...navItems, ...(isAdmin ? [adminNavItem] : [])].map((item) => {
             const isActive =
               item.href === "/"
                 ? pathname === "/"
