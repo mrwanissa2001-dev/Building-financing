@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react"
-import type { Payment, Expense, Transfer } from "@/lib/types"
+import type { Payment, Expense, Transfer, Task } from "@/lib/types"
 
 type CalendarEntry =
   | { type: "payment"; data: Payment }
@@ -33,6 +33,12 @@ type CalendarEntry =
   | { type: "transfer"; data: Transfer }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+const TASK_PRIORITY_CLASS: Record<Task["priority"], string> = {
+  high: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
+  medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+  low: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400",
+}
 
 export default function CalendarPage() {
   const { state } = useStore()
@@ -43,6 +49,7 @@ export default function CalendarPage() {
   const [showPayments, setShowPayments] = useState(true)
   const [showExpenses, setShowExpenses] = useState(true)
   const [showTransfers, setShowTransfers] = useState(true)
+  const [showTasks, setShowTasks] = useState(true)
 
   // Calendar grid: Sun–Sat rows covering the full displayed month
   const calendarDays = useMemo(() => {
@@ -79,11 +86,32 @@ export default function CalendarPage() {
     return map
   }, [state.payments, state.expenses, state.transfers, showPayments, showExpenses, showTransfers])
 
+  // Map from "yyyy-MM-dd" → tasks for that due date
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, Task[]>()
+    if (!showTasks) return map
+    for (const task of state.tasks) {
+      if (!task.due_date) continue
+      const list = map.get(task.due_date)
+      if (list) {
+        list.push(task)
+      } else {
+        map.set(task.due_date, [task])
+      }
+    }
+    return map
+  }, [state.tasks, showTasks])
+
   // Entries for the selected day dialog
   const selectedDayEntries = useMemo(() => {
     if (!selectedDay) return []
     return entriesByDate.get(format(selectedDay, "yyyy-MM-dd")) ?? []
   }, [selectedDay, entriesByDate])
+
+  const selectedDayTasks = useMemo(() => {
+    if (!selectedDay) return []
+    return tasksByDate.get(format(selectedDay, "yyyy-MM-dd")) ?? []
+  }, [selectedDay, tasksByDate])
 
   const goToPrevMonth = () => setCurrentDate((d) => subMonths(d, 1))
   const goToNextMonth = () => setCurrentDate((d) => addMonths(d, 1))
@@ -126,6 +154,15 @@ export default function CalendarPage() {
             <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-blue-500" />
             {t("Transfers")}
           </Button>
+          <Button
+            variant={showTasks ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowTasks((v) => !v)}
+            className="gap-1.5 text-xs"
+          >
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+            {t("Tasks")}
+          </Button>
         </div>
       </div>
 
@@ -163,9 +200,12 @@ export default function CalendarPage() {
           {calendarDays.map((day) => {
             const dateStr = format(day, "yyyy-MM-dd")
             const entries = entriesByDate.get(dateStr) ?? []
+            const dayTasks = tasksByDate.get(dateStr) ?? []
             const inCurrentMonth = isSameMonth(day, currentDate)
             const todayCell = isToday(day)
-            const hasEntries = entries.length > 0 && inCurrentMonth
+            const hasTransactions = entries.length > 0 && inCurrentMonth
+            const hasTasks = dayTasks.length > 0 && inCurrentMonth
+            const hasEntries = hasTransactions || hasTasks
 
             const paymentCount = entries.filter((e) => e.type === "payment").length
             const expenseCount = entries.filter((e) => e.type === "expense").length
@@ -199,8 +239,8 @@ export default function CalendarPage() {
                   {format(day, "d")}
                 </div>
 
-                {/* Transaction indicators */}
-                {hasEntries && (
+                {/* Transaction + task indicators */}
+                {inCurrentMonth && (hasTransactions || hasTasks) && (
                   <div className="space-y-0.5">
                     <div className="flex flex-wrap gap-0.5">
                       {paymentCount > 0 && (
@@ -212,10 +252,20 @@ export default function CalendarPage() {
                       {transferCount > 0 && (
                         <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                       )}
+                      {hasTasks && (
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                      )}
                     </div>
-                    <div className="text-[10px] leading-tight text-muted-foreground">
-                      {formatCurrency(totalAmount)}
-                    </div>
+                    {hasTransactions && (
+                      <div className="text-[10px] leading-tight text-muted-foreground">
+                        {formatCurrency(totalAmount)}
+                      </div>
+                    )}
+                    {hasTasks && (
+                      <div className="text-[10px] leading-tight text-amber-600 dark:text-amber-400">
+                        {dayTasks.length} task{dayTasks.length !== 1 ? "s" : ""}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -237,62 +287,94 @@ export default function CalendarPage() {
           </DialogHeader>
 
           <div className="mt-2 space-y-2">
-            {selectedDayEntries.length === 0 ? (
+            {/* Transactions */}
+            {selectedDayEntries.length === 0 && selectedDayTasks.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("No transactions on this day.")}</p>
             ) : (
-              selectedDayEntries.map((entry, i) => (
-                <div
-                  key={i}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    {/* Type badge + method */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {entry.type === "payment" && (
-                        <Badge className="bg-green-500 text-white hover:bg-green-600">
-                          {t("Payment")}
-                        </Badge>
+              <>
+                {selectedDayEntries.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {entry.type === "payment" && (
+                          <Badge className="bg-green-500 text-white hover:bg-green-600">
+                            {t("Payment")}
+                          </Badge>
+                        )}
+                        {entry.type === "expense" && (
+                          <Badge variant="destructive">{t("Expense")}</Badge>
+                        )}
+                        {entry.type === "transfer" && (
+                          <Badge variant="secondary">{t("Transfers")}</Badge>
+                        )}
+
+                        {entry.type !== "transfer" && (
+                          <span className="text-xs text-muted-foreground">
+                            {t(entry.data.method === "cash" ? "Cash" : "Bank")}
+                          </span>
+                        )}
+                        {entry.type === "transfer" && (
+                          <span className="text-xs text-muted-foreground">
+                            {t(entry.data.from_method === "cash" ? "Cash" : "Bank")}
+                            {" → "}
+                            {t(entry.data.to_method === "cash" ? "Cash" : "Bank")}
+                          </span>
+                        )}
+                      </div>
+
+                      {entry.type === "payment" && entry.data.payer_name && (
+                        <p className="truncate text-sm">{entry.data.payer_name}</p>
                       )}
-                      {entry.type === "expense" && (
-                        <Badge variant="destructive">{t("Expense")}</Badge>
-                      )}
-                      {entry.type === "transfer" && (
-                        <Badge variant="secondary">{t("Transfers")}</Badge>
+                      {entry.type === "expense" && entry.data.vendor && (
+                        <p className="truncate text-sm">{entry.data.vendor}</p>
                       )}
 
-                      {entry.type !== "transfer" && (
-                        <span className="text-xs text-muted-foreground">
-                          {t(entry.data.method === "cash" ? "Cash" : "Bank")}
-                        </span>
-                      )}
-                      {entry.type === "transfer" && (
-                        <span className="text-xs text-muted-foreground">
-                          {t(entry.data.from_method === "cash" ? "Cash" : "Bank")}
-                          {" → "}
-                          {t(entry.data.to_method === "cash" ? "Cash" : "Bank")}
-                        </span>
+                      {entry.data.notes && (
+                        <p className="truncate text-xs text-muted-foreground">{entry.data.notes}</p>
                       )}
                     </div>
 
-                    {/* Description */}
-                    {entry.type === "payment" && entry.data.payer_name && (
-                      <p className="truncate text-sm">{entry.data.payer_name}</p>
-                    )}
-                    {entry.type === "expense" && entry.data.vendor && (
-                      <p className="truncate text-sm">{entry.data.vendor}</p>
-                    )}
-
-                    {/* Notes */}
-                    {entry.data.notes && (
-                      <p className="truncate text-xs text-muted-foreground">{entry.data.notes}</p>
-                    )}
+                    <div className="shrink-0 text-sm font-semibold">
+                      {formatCurrency(entry.data.amount)}
+                    </div>
                   </div>
+                ))}
 
-                  <div className="shrink-0 text-sm font-semibold">
-                    {formatCurrency(entry.data.amount)}
+                {/* Tasks for this day */}
+                {selectedDayTasks.length > 0 && (
+                  <div className="mt-1">
+                    {selectedDayEntries.length > 0 && (
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                        Tasks
+                      </p>
+                    )}
+                    {selectedDayTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center gap-2 rounded-lg border border-border p-3"
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className={`text-sm ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
+                            {task.title}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-muted-foreground">{task.description}</p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${TASK_PRIORITY_CLASS[task.priority]}`}>
+                          {task.priority}
+                        </span>
+                        {task.status === "done" && (
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">Done</Badge>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
         </DialogContent>
