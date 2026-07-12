@@ -133,6 +133,22 @@ export interface BuildingSettings {
   apartments_per_floor: number
 }
 
+export type TaskStatus = 'todo' | 'in_progress' | 'done'
+export type TaskPriority = 'low' | 'medium' | 'high'
+export type TaskColor = 'rose' | 'amber' | 'sky' | 'green' | 'purple' | 'blue'
+
+export interface Task {
+  id: string
+  user_id?: string
+  title: string
+  description: string
+  due_date: string | null
+  status: TaskStatus
+  priority: TaskPriority
+  color: TaskColor
+  created_at: string
+}
+
 // ── Computed types ──
 
 // last_paid_month / next_unpaid_month are 'YYYY-MM' month keys derived
