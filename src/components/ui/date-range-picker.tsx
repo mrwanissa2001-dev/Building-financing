@@ -16,6 +16,7 @@ import {
 } from "date-fns"
 import { CalendarDays, ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 
@@ -173,6 +174,7 @@ export function DateRangePicker({
   className?: string
   align?: "start" | "center" | "end"
 }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
   const [draftStart, setDraftStart] = useState<Date | null>(null)
@@ -247,7 +249,7 @@ export function DateRangePicker({
                 )}
               >
                 {active && <Check className="h-3 w-3" />}
-                {p.label}
+                {t(p.label)}
               </button>
             )
           })}
@@ -265,7 +267,7 @@ export function DateRangePicker({
             )}
           >
             <CalendarDays className="h-3 w-3" />
-            Custom
+            {t("Custom")}
           </button>
         </div>
 
@@ -277,20 +279,20 @@ export function DateRangePicker({
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setViewMonth((m) => addMonths(m, -1))}
-                aria-label="Previous month"
+                aria-label={t("Previous month")}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="text-xs text-muted-foreground">
-                {draftStart ? format(draftStart, "MMM d, yyyy") : "Start"} –{" "}
-                {draftEnd ? format(draftEnd, "MMM d, yyyy") : "End"}
+                {draftStart ? format(draftStart, "MMM d, yyyy") : t("Start")} –{" "}
+                {draftEnd ? format(draftEnd, "MMM d, yyyy") : t("End")}
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setViewMonth((m) => addMonths(m, 1))}
-                aria-label="Next month"
+                aria-label={t("Next month")}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -320,10 +322,10 @@ export function DateRangePicker({
             </div>
             <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
               <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-                Cancel
+                {t("Cancel")}
               </Button>
               <Button size="sm" onClick={applyCustom} disabled={!draftStart || !draftEnd}>
-                Apply
+                {t("Apply")}
               </Button>
             </div>
           </div>
