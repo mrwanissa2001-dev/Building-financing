@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
 import { useI18n, LANGUAGES } from "@/lib/i18n"
 import { APP_VERSION } from "@/lib/constants"
+import { supabase } from "@/lib/supabase"
 import {
   LayoutDashboard,
   Building2,
@@ -19,8 +20,9 @@ import {
   Globe,
   CalendarDays,
   FileText,
+  ShieldCheck,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +34,8 @@ const navItems = [
   { href: "/appearance", label: "Settings", icon: SlidersHorizontal },
 ]
 
+const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck }
+
 interface SidebarProps {
   theme: "light" | "dark"
   toggleTheme: () => void
@@ -40,9 +44,25 @@ interface SidebarProps {
 export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const { state } = useStore()
   const { t, lang, setLang } = useI18n()
   const buildingName = state.settings.building_name
+
+  useEffect(() => {
+    if (!supabase) return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      supabase!
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", session.user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.is_admin) setIsAdmin(true)
+        })
+    })
+  }, [])
 
   return (
     <>
@@ -89,7 +109,7 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4">
-          {navItems.map((item) => {
+          {[...navItems, ...(isAdmin ? [adminNavItem] : [])].map((item) => {
             const isActive =
               item.href === "/"
                 ? pathname === "/"
