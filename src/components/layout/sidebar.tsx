@@ -19,14 +19,6 @@ import {
   Globe,
 } from "lucide-react"
 import { useState } from "react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import type { Lang } from "@/lib/i18n"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -118,32 +110,31 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
         </nav>
 
         {/* Footer controls */}
-        <div className="shrink-0 border-t border-sidebar-border p-4 space-y-2">
-          {/* Language picker */}
-          <div className="flex items-center gap-2 px-1">
-            <Globe className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />
-            <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
-              <SelectTrigger className="h-8 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-sidebar-foreground shadow-none hover:bg-sidebar-accent focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((l) => (
-                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="shrink-0 border-t border-sidebar-border p-4 space-y-1">
+          {/* Language toggle — cycles through the available languages */}
+          <button
+            onClick={() => {
+              const idx = LANGUAGES.findIndex((l) => l.value === lang)
+              const next = LANGUAGES[(idx + 1) % LANGUAGES.length]
+              setLang(next.value)
+            }}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+          >
+            <Globe className="h-5 w-5 shrink-0" />
+            <span className="flex-1 text-start">{t("Language")}</span>
+            <span className="text-sidebar-foreground/60">{lang === "ar" ? "العربية" : "English"}</span>
+          </button>
 
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
           >
-            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            {theme === "dark" ? t("Light Mode") : t("Dark Mode")}
+            {theme === "dark" ? <Sun className="h-5 w-5 shrink-0" /> : <Moon className="h-5 w-5 shrink-0" />}
+            <span className="flex-1 text-start">{theme === "dark" ? t("Light Mode") : t("Dark Mode")}</span>
           </button>
 
-          <p className="px-3 text-[10px] text-muted-foreground">BuildFin {APP_VERSION}</p>
+          <p className="px-3 pt-1 text-[10px] text-muted-foreground">BuildFin {APP_VERSION}</p>
         </div>
       </aside>
     </>

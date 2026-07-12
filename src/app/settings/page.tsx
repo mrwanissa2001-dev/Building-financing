@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import {
   Card,
   CardHeader,
@@ -94,6 +95,8 @@ export default function SettingsPage() {
   const [histIncomeBank, setHistIncomeBank] = useState("")
   const [histExpCash, setHistExpCash] = useState("")
   const [histExpBank, setHistExpBank] = useState("")
+  // whether this year's cash/bank splits carry into the dashboard balances
+  const [histOnDashboard, setHistOnDashboard] = useState(true)
   const [editingHistId, setEditingHistId] = useState<string | null>(null)
   // breakdown editor state: which year row is expanded + its percents
   const [breakdownHistId, setBreakdownHistId] = useState<string | null>(null)
@@ -213,6 +216,7 @@ export default function SettingsPage() {
     setHistIncomeBank(h.income_bank ? String(h.income_bank) : "")
     setHistExpCash(h.expenditure_cash ? String(h.expenditure_cash) : "")
     setHistExpBank(h.expenditure_bank ? String(h.expenditure_bank) : "")
+    setHistOnDashboard(h.on_dashboard !== false)
   }
 
   function resetHistoryForm() {
@@ -224,6 +228,7 @@ export default function SettingsPage() {
     setHistIncomeBank("")
     setHistExpCash("")
     setHistExpBank("")
+    setHistOnDashboard(true)
   }
 
   function handleSubmitHistory() {
@@ -253,9 +258,9 @@ export default function SettingsPage() {
     }
     if (editingHistId) {
       const existing = state.history.find((h) => h.id === editingHistId)
-      if (existing) updateHistory({ ...existing, year, income, expenditure, ...splits })
+      if (existing) updateHistory({ ...existing, year, income, expenditure, ...splits, on_dashboard: histOnDashboard })
     } else {
-      addHistory({ year, income, expenditure, ...splits, expense_breakdown: {} })
+      addHistory({ year, income, expenditure, ...splits, on_dashboard: histOnDashboard, expense_breakdown: {} })
     }
     resetHistoryForm()
   }
@@ -850,6 +855,13 @@ export default function SettingsPage() {
 
             {/* Optional cash/bank split → carries the year into the dashboard balances */}
             <div className="rounded-md bg-muted/40 p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-xs">{t("Affects dashboard balances")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("Off = record-only; the cash/bank splits below never touch the dashboard.")}</p>
+                </div>
+                <Switch checked={histOnDashboard} onCheckedChange={setHistOnDashboard} />
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t("Optional: split the totals between cash and bank to add this year's money to the dashboard's Cash on Hand and Bank Balance. Leave blank to keep the year as record-only.")}
               </p>
@@ -900,6 +912,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               {(() => {
+                if (!histOnDashboard) return null
                 const carriedCash = (parseAmount(histIncomeCash) || 0) - (parseAmount(histExpCash) || 0)
                 const carriedBank = (parseAmount(histIncomeBank) || 0) - (parseAmount(histExpBank) || 0)
                 if (carriedCash === 0 && carriedBank === 0) return null

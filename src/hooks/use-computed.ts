@@ -47,6 +47,13 @@ export function useComputed() {
     [payments]
   )
 
+  // unpaid expenses (bills logged but not yet settled) stay in the log
+  // but out of every dashboard money total
+  const paidExpenses = useMemo(
+    () => expenses.filter((e) => e.paid !== false),
+    [expenses]
+  )
+
   // money-based month coverage per apartment
   const coverageByApartment = useMemo((): Map<string, ApartmentCoverage> => {
     const map = new Map<string, ApartmentCoverage>()
@@ -96,17 +103,17 @@ export function useComputed() {
   }, [getAllApartmentsWithStatus])
 
   const getDashboardStats = useMemo((): DashboardStats => {
-    const cashOnHand = computeCashOnHand(dashPayments, expenses, transfers, history)
-    const bankBalance = computeBankBalance(dashPayments, expenses, transfers, history)
+    const cashOnHand = computeCashOnHand(dashPayments, paidExpenses, transfers, history)
+    const bankBalance = computeBankBalance(dashPayments, paidExpenses, transfers, history)
 
     return {
       cash_on_hand: cashOnHand,
       bank_balance: bankBalance,
       total_balance: cashOnHand + bankBalance,
       collected_this_month: computeCollectedThisMonth(dashPayments),
-      spent_this_month: computeSpentThisMonth(expenses),
+      spent_this_month: computeSpentThisMonth(paidExpenses),
     }
-  }, [dashPayments, expenses, transfers, history])
+  }, [dashPayments, paidExpenses, transfers, history])
 
   const getOccupancyBreakdown = useMemo((): OccupancyBreakdown => {
     return computeOccupancyBreakdown(apartments, settings.total_apartments)
@@ -145,7 +152,7 @@ export function useComputed() {
           .filter((p) => isWithinMonth(p.date_paid, mStart, mEnd))
           .reduce((s, p) => s + p.amount, 0)
 
-        const expenseTotal = expenses
+        const expenseTotal = paidExpenses
           .filter((e) => isWithinMonth(e.date, mStart, mEnd))
           .reduce((s, e) => s + e.amount, 0)
 
@@ -154,7 +161,7 @@ export function useComputed() {
 
       return result
     }
-  }, [dashPayments, expenses])
+  }, [dashPayments, paidExpenses])
 
   const getExpensesByCategory = useMemo((): Array<{
     category: string
@@ -162,7 +169,7 @@ export function useComputed() {
   }> => {
     const categoryMap = new Map<string, number>()
 
-    for (const e of expenses) {
+    for (const e of paidExpenses) {
       const cat = categories.find((c) => c.id === e.category_id)
       const name = cat?.name ?? 'other'
       const displayName = name.charAt(0).toUpperCase() + name.slice(1)
@@ -175,7 +182,7 @@ export function useComputed() {
     return Array.from(categoryMap.entries())
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount)
-  }, [expenses, categories])
+  }, [paidExpenses, categories])
 
   const getRunningBalance = useMemo((): Array<{
     date: string
@@ -185,27 +192,29 @@ export function useComputed() {
     dashPayments.forEach((p) =>
       allEvents.push({ date: p.date_paid, delta: p.amount })
     )
-    expenses.forEach((e) =>
+    paidExpenses.forEach((e) =>
       allEvents.push({ date: e.date, delta: -e.amount })
     )
     allEvents.sort((a, b) => a.date.localeCompare(b.date))
 
     // migrated prior years seed the starting balance through their
     // cash/bank splits — the same amounts the balance cards carry
-    let balance = history.reduce(
-      (s, h) =>
-        s +
-        (h.income_cash ?? 0) +
-        (h.income_bank ?? 0) -
-        (h.expenditure_cash ?? 0) -
-        (h.expenditure_bank ?? 0),
-      0
-    )
+    let balance = history
+      .filter((h) => h.on_dashboard !== false)
+      .reduce(
+        (s, h) =>
+          s +
+          (h.income_cash ?? 0) +
+          (h.income_bank ?? 0) -
+          (h.expenditure_cash ?? 0) -
+          (h.expenditure_bank ?? 0),
+        0
+      )
     return allEvents.map((event) => {
       balance += event.delta
       return { date: event.date, balance }
     })
-  }, [dashPayments, expenses, history])
+  }, [dashPayments, paidExpenses, history])
 
   const getBudgetVsActual = useMemo((): {
     income: { expected: number; actual: number }
@@ -229,7 +238,7 @@ export function useComputed() {
       })
       .reduce((s, p) => s + p.amount, 0)
 
-    const actualExpenditure = expenses
+    const actualExpenditure = paidExpenses
       .filter((e) => {
         const d = parseISO(e.date)
         return (
@@ -245,7 +254,7 @@ export function useComputed() {
         actual: actualExpenditure,
       },
     }
-  }, [dashPayments, expenses, settings])
+  }, [dashPayments, paidExpenses, settings])
 
   const cashVsBankThisMonth = useMemo(() => {
     const now = new Date()

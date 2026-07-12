@@ -53,7 +53,9 @@ export interface Payment {
   created_at: string
 }
 
-// Money moved between the cash box and the bank account
+// Money moved between the cash box and the bank account.
+// on_dashboard = false records the transfer for reference without
+// shifting the dashboard's Cash on Hand / Bank Balance.
 export interface Transfer {
   id: string
   amount: number
@@ -61,12 +63,16 @@ export interface Transfer {
   to_method: PaymentMethod
   date: string
   notes: string
+  on_dashboard: boolean
   created_at: string
 }
 
 // recurring_interval is the number of months between occurrences of a
 // recurring expense (1 = monthly, 3 = quarterly, ...); ignored when
-// recurring is false
+// recurring is false.
+// paid = false marks a logged-but-unpaid expense (a bill still owed): it
+// stays in the log but is kept out of every dashboard money total and
+// shows as "not paid" in the recurring grid.
 export interface Expense {
   id: string
   category_id: string
@@ -76,6 +82,7 @@ export interface Expense {
   vendor: string
   recurring: boolean
   recurring_interval: number
+  paid: boolean
   notes: string
   created_at: string
 }
@@ -97,6 +104,8 @@ export interface CategoryPerson {
 // breakdown of the expenditure keyed by category name. The cash/bank
 // splits are optional; when set they carry the year's money into the
 // dashboard's Cash on Hand / Bank Balance.
+// on_dashboard = false keeps the year record-only — its cash/bank splits
+// never touch the dashboard balances.
 export interface YearlyHistory {
   id: string
   year: number
@@ -106,6 +115,7 @@ export interface YearlyHistory {
   income_bank: number
   expenditure_cash: number
   expenditure_bank: number
+  on_dashboard: boolean
   expense_breakdown: Record<string, number>
 }
 

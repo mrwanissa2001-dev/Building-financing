@@ -140,6 +140,7 @@ function normalizeExpense(row: Expense): Expense {
     ...row,
     recurring: row.recurring ?? false,
     recurring_interval: row.recurring_interval ?? 1,
+    paid: row.paid ?? true,
   }
 }
 
@@ -150,8 +151,13 @@ function normalizeHistory(row: YearlyHistory): YearlyHistory {
     income_bank: row.income_bank ?? 0,
     expenditure_cash: row.expenditure_cash ?? 0,
     expenditure_bank: row.expenditure_bank ?? 0,
+    on_dashboard: row.on_dashboard ?? true,
     expense_breakdown: row.expense_breakdown ?? {},
   }
+}
+
+function normalizeTransfer(row: Transfer): Transfer {
+  return { ...row, on_dashboard: row.on_dashboard ?? true }
 }
 
 export async function testConnection(): Promise<{ ok: boolean; message: string }> {
@@ -202,7 +208,7 @@ export async function fetchAllData() {
     categories: categories.data as ExpenseCategory[],
     people: people.error ? [] : (people.data as CategoryPerson[]),
     history: history.error ? [] : (history.data as YearlyHistory[]).map(normalizeHistory),
-    transfers: transfers.error ? [] : (transfers.data as Transfer[]),
+    transfers: transfers.error ? [] : (transfers.data as Transfer[]).map(normalizeTransfer),
     settings: normalizeSettings(settings.data as BuildingSettings),
   }
 }
@@ -303,7 +309,7 @@ export async function deleteHistoryRow(id: string) {
 
 export async function insertTransfer(data: Omit<Transfer, 'created_at'>) {
   const row = await insertRow('transfers', data, 'Transfer')
-  return row ? (row as Transfer) : null
+  return row ? normalizeTransfer(row as Transfer) : null
 }
 
 export async function deleteTransferRow(id: string) {

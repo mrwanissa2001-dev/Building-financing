@@ -224,23 +224,29 @@ export function computeBalance(
     .filter((p) => p.method === method)
     .reduce((sum, p) => sum + p.amount, 0)
 
+  // unpaid expenses are still owed, not yet spent — they never reduce a
+  // balance until marked paid
   const moneyOut = expenses
-    .filter((e) => e.method === method)
+    .filter((e) => e.method === method && e.paid !== false)
     .reduce((sum, e) => sum + e.amount, 0)
 
-  const transferred = transfers.reduce((sum, t) => {
-    if (t.to_method === method && t.from_method !== method) return sum + t.amount
-    if (t.from_method === method && t.to_method !== method) return sum - t.amount
-    return sum
-  }, 0)
+  const transferred = transfers
+    .filter((t) => t.on_dashboard !== false)
+    .reduce((sum, t) => {
+      if (t.to_method === method && t.from_method !== method) return sum + t.amount
+      if (t.from_method === method && t.to_method !== method) return sum - t.amount
+      return sum
+    }, 0)
 
-  const carried = history.reduce(
-    (sum, h) =>
-      method === 'cash'
-        ? sum + (h.income_cash ?? 0) - (h.expenditure_cash ?? 0)
-        : sum + (h.income_bank ?? 0) - (h.expenditure_bank ?? 0),
-    0
-  )
+  const carried = history
+    .filter((h) => h.on_dashboard !== false)
+    .reduce(
+      (sum, h) =>
+        method === 'cash'
+          ? sum + (h.income_cash ?? 0) - (h.expenditure_cash ?? 0)
+          : sum + (h.income_bank ?? 0) - (h.expenditure_bank ?? 0),
+      0
+    )
 
   return moneyIn - moneyOut + transferred + carried
 }
@@ -276,7 +282,7 @@ export function computeCollectedThisMonth(payments: Payment[]): number {
 export function computeSpentThisMonth(expenses: Expense[]): number {
   const nowKey = currentMonthKey()
   return expenses
-    .filter((e) => monthKeyOrNull(e.date) === nowKey)
+    .filter((e) => e.paid !== false && monthKeyOrNull(e.date) === nowKey)
     .reduce((sum, e) => sum + e.amount, 0)
 }
 
