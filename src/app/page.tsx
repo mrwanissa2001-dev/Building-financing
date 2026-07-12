@@ -506,6 +506,7 @@ export default function DashboardPage() {
       rows,
     })
   }
+
   const rangeQuery = `start=${rangeStart}&end=${rangeEnd}`
 
   const heroDeltaUp = balanceDelta !== null && balanceDelta >= 0
