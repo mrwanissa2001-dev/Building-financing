@@ -238,6 +238,9 @@ const AR: Record<string, string> = {
   "Delete payment": "حذف الدفعة",
   "Payment History": "سجل مدفوعات الشقة",
   "No payments recorded": "لا توجد مدفوعات مسجلة",
+  "Fill in the apartment details below.": "املأ بيانات الشقة أدناه.",
+  "Update the payment details below.": "حدّث بيانات الدفعة أدناه.",
+  "Record a new payment from a resident.": "سجّل دفعة جديدة من ساكن.",
   "Apartment Details": "بيانات الشقة",
   "Second Inhabitant": "الساكن الثاني",
   "Phone 1": "هاتف 1",
@@ -313,6 +316,7 @@ const AR: Record<string, string> = {
   ", {n} rows skipped": "، وتم تخطي {n} صف",
 
   // ── Expenses page ──
+  "Date Range": "النطاق الزمني",
   "Add Expense": "إضافة مصروف",
   "Track and manage building expenses": "تتبع وإدارة مصروفات المبنى",
   "Loading expenses...": "جارٍ تحميل المصروفات...",
@@ -329,11 +333,14 @@ const AR: Record<string, string> = {
     "لا توجد مصروفات متكررة بعد — فعّل «متكرر» عند إضافة مصروف",
   "No expenses found": "لا توجد مصروفات",
   "Recurring": "متكرر",
+  "Edit Payment": "تعديل الدفعة",
   "Edit expense": "تعديل المصروف",
   "Delete expense": "حذف المصروف",
   "Edit Expense": "تعديل مصروف",
   "Update the expense details below.": "حدّث بيانات المصروف أدناه.",
   "Fill in the details to record a new expense.": "املأ البيانات لتسجيل مصروف جديد.",
+  "Add category…": "إضافة فئة…",
+  "Add relation…": "إضافة صلة…",
   "Select category": "اختر فئة",
   "{n} staff under this category": "{n} من العاملين تحت هذه الفئة",
   "Select method": "اختر طريقة الدفع",
@@ -438,6 +445,39 @@ const AR: Record<string, string> = {
   "Year already exists": "السنة موجودة بالفعل",
   "Edit the existing {year} row instead.": "عدّل صف {year} الموجود بدلًا من ذلك.",
   "Loading settings...": "جارٍ تحميل الإعدادات...",
+
+  // ── Date range picker ──
+  "All time": "كل الفترات",
+  "Today": "اليوم",
+  "This week": "هذا الأسبوع",
+  "This month": "هذا الشهر",
+  "This year": "هذه السنة",
+  "Custom": "مخصص",
+  "Apply": "تطبيق",
+  "Start": "بداية",
+  "End": "نهاية",
+  "Previous month": "الشهر السابق",
+  "Next month": "الشهر التالي",
+
+  // ── Appearance / widget layout page ──
+  "Choose which widgets appear on each page and the order they show in. Changes apply instantly and are saved on this device.":
+    "اختر الأدوات التي تظهر في كل صفحة وترتيبها. التغييرات تُطبّق فورًا وتُحفظ على هذا الجهاز.",
+  "widgets shown": "أداة معروضة",
+  "use the arrows to move a widget above or below another.":
+    "استخدم الأسهم لنقل أداة أعلى أو أسفل أخرى.",
+  "Reset": "إعادة ضبط",
+  "Total balance": "الرصيد الإجمالي",
+  "Collected this month": "المحصّل هذا الشهر",
+  "Spent this month": "المصروف هذا الشهر",
+  "Net this month": "الصافي هذا الشهر",
+  "Income vs expenses chart": "رسم الدخل مقابل المصروفات",
+  "Running balance chart": "رسم الرصيد التراكمي",
+  "Expenses by category": "المصروفات حسب الفئة",
+  "Budget vs actual": "الميزانية مقابل الفعلي",
+  "Payments collection grid": "شبكة تحصيل المدفوعات",
+  "Summary table": "جدول الملخص",
+  "Payment log": "سجل المدفوعات",
+  "Expenses table": "جدول المصروفات",
 }
 
 export const DICTIONARIES: Partial<Record<Lang, Record<string, string>>> = {
