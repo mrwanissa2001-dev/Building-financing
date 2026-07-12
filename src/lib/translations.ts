@@ -11,10 +11,17 @@ const AR: Record<string, string> = {
   "Apartments & Payments": "الشقق والمدفوعات",
   "Expenses": "المصروفات",
   "Building Setup": "إعدادات المبنى",
+  "Calendar": "التقويم",
   "Light Mode": "الوضع الفاتح",
   "Dark Mode": "الوضع الداكن",
   "Open menu": "فتح القائمة",
   "Close menu": "إغلاق القائمة",
+
+  // ── Calendar page ──
+  "All transactions on {date}": "كل المعاملات في {date}",
+  "No transactions on this day.": "لا توجد معاملات في هذا اليوم.",
+  "Payments": "المدفوعات",
+  "Transfers": "التحويلات",
 
   // ── Common ──
   "Add": "إضافة",
