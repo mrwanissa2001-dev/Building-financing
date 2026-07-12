@@ -28,3 +28,12 @@ export function formatMonth(date: string | Date): string {
     month: 'short',
   })
 }
+
+// Re-export date filtering utilities
+export {
+  dateInRange,
+  filterByDateRange,
+  filterPaymentsByRange,
+  filterExpensesByRange,
+  filterTransfersByRange,
+} from "@/lib/date-filters"
