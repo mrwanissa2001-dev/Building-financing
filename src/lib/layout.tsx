@@ -30,6 +30,7 @@ export const REGISTRY: Record<PageKey, WidgetDef[]> = {
     { key: "overdue", label: "Overdue alerts" },
     { key: "history", label: "Previous years" },
     { key: "notes", label: "Notes" },
+    { key: "calculator", label: "Calculator" },
   ],
   apartments: [
     { key: "summary", label: "Summary table" },
