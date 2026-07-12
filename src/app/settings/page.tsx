@@ -7,7 +7,7 @@ import { testConnection } from "@/lib/supabase-data"
 import { buildingFloors } from "@/lib/constants"
 import { formatCurrency } from "@/lib/utils"
 import { parseAmount } from "@/lib/csv"
-import type { Apartment, CategoryPerson, YearlyHistory } from "@/lib/types"
+import type { Apartment, CategoryPerson, YearlyHistory, ExpenseCategory } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,6 +58,7 @@ export default function SettingsPage() {
     addPerson,
     updatePerson,
     deletePerson,
+    deleteCategory,
     addHistory,
     updateHistory,
     deleteHistory,
@@ -106,6 +107,9 @@ export default function SettingsPage() {
   const [planBuilding, setPlanBuilding] = useState("1")
   const [unitDraft, setUnitDraft] = useState<Record<string, string>>({})
   const [deletePlanApt, setDeletePlanApt] = useState<Apartment | null>(null)
+
+  // category delete confirmation
+  const [deleteConfirmCategory, setDeleteConfirmCategory] = useState<ExpenseCategory | null>(null)
 
   useEffect(() => {
     testConnection().then(({ ok, message }) => {
@@ -650,6 +654,15 @@ export default function SettingsPage() {
                     <Badge variant="secondary">
                       {t("{n} people", { n: people.length })}
                     </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 ml-auto"
+                      onClick={() => setDeleteConfirmCategory(cat)}
+                      aria-label={t("Delete {name}", { name: cat.name })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
                   </div>
                   <div className="space-y-1.5">
                     {people.map((p) => (
@@ -958,6 +971,38 @@ export default function SettingsPage() {
               }}
             >
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category delete confirmation */}
+      <Dialog open={!!deleteConfirmCategory} onOpenChange={() => setDeleteConfirmCategory(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("Delete category {name}?", { name: deleteConfirmCategory?.name || "" })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("This will permanently delete {category} and all expenses in it cannot be recategorized. This action can't be undone.", { category: deleteConfirmCategory?.name || "" })}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmCategory(null)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteConfirmCategory) {
+                  deleteCategory(deleteConfirmCategory.id)
+                  toast({
+                    title: t("Category deleted"),
+                    variant: "success",
+                  })
+                }
+                setDeleteConfirmCategory(null)
+              }}
+            >
+              {t("Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

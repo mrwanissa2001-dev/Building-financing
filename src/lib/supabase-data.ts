@@ -273,6 +273,10 @@ export async function insertCategory(cat: ExpenseCategory) {
   return row ? (row as ExpenseCategory) : null
 }
 
+export async function deleteCategoryRow(id: string) {
+  return deleteRow('expense_categories', id, 'Category')
+}
+
 // ── Category people ──
 
 export async function insertPerson(person: CategoryPerson) {
@@ -310,6 +314,12 @@ export async function deleteHistoryRow(id: string) {
 export async function insertTransfer(data: Omit<Transfer, 'created_at'>) {
   const row = await insertRow('transfers', data, 'Transfer')
   return row ? normalizeTransfer(row as Transfer) : null
+}
+
+export async function updateTransferRow(transfer: Transfer) {
+  const { id, created_at, ...rest } = transfer
+  void created_at
+  return updateRow('transfers', id, rest, 'Transfer')
 }
 
 export async function deleteTransferRow(id: string) {

@@ -34,6 +34,7 @@ import { useI18n } from "@/lib/i18n"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -986,10 +987,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{t("Delete Apartment")}</DialogTitle>
+              <DialogDescription>
+                {t("This will permanently delete this apartment and all associated payments. This action cannot be undone.")}
+              </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              {t("This will permanently delete this apartment and all associated payments. This action cannot be undone.")}
-            </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>{t("Cancel")}</Button>
               <Button variant="destructive" onClick={() => deleteConfirmId && confirmDelete(deleteConfirmId)}>{t("Delete")}</Button>
@@ -1349,6 +1350,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("Add Apartment")}</DialogTitle>
+            <DialogDescription>{t("Fill in the apartment details below.")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1441,10 +1443,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Delete Payment")}</DialogTitle>
+            <DialogDescription>
+              {t("This will permanently remove this payment entry. This action cannot be undone.")}
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {t("This will permanently remove this payment entry. This action cannot be undone.")}
-          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletePaymentId(null)}>{t("Cancel")}</Button>
             <Button
@@ -1481,6 +1483,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPayment ? t("Edit Payment") : t("Add Payment")}</DialogTitle>
+            <DialogDescription>{editingPayment ? t("Update the payment details below.") : t("Record a new payment from a resident.")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>

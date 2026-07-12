@@ -17,6 +17,9 @@ import {
   Repeat,
   ArrowLeftRight,
   Trash2,
+  Pencil,
+  Download,
+  Search,
 } from "lucide-react"
 import {
   BarChart,
@@ -37,7 +40,7 @@ import { useStore } from "@/lib/store"
 import { useLayout } from "@/lib/layout"
 import { useI18n } from "@/lib/i18n"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
-import { parseAmount } from "@/lib/csv"
+import { parseAmount, buildCsv, downloadCsv } from "@/lib/csv"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -60,7 +63,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { monthKey, currentMonthKey, monthsBetween, monthKeyLabel } from "@/lib/months"
 import type { MonthCellStatus } from "@/lib/computations"
-import type { PaymentMethod } from "@/lib/types"
+import type { PaymentMethod, Transfer } from "@/lib/types"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -162,7 +165,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { state, addTransfer, deleteTransfer } = useStore()
+  const { state, addTransfer, updateTransfer, deleteTransfer } = useStore()
   const { toast } = useToast()
   const {
     dashboardStats,
@@ -185,6 +188,14 @@ export default function DashboardPage() {
   const [transferNotes, setTransferNotes] = useState("")
   const [transferOnDashboard, setTransferOnDashboard] = useState(true)
 
+  // Edit-transfer dialog state — non-null editTransfer means a row is being edited
+  const [editTransfer, setEditTransfer] = useState<Transfer | null>(null)
+  const [editDirection, setEditDirection] = useState<"cash_to_bank" | "bank_to_cash">("cash_to_bank")
+  const [editAmount, setEditAmount] = useState("")
+  const [editDate, setEditDate] = useState("")
+  const [editNotes, setEditNotes] = useState("")
+  const [editOnDashboard, setEditOnDashboard] = useState(true)
+
   // Cell-log dialog — shows the entries behind a clicked grid cell
   const [cellLog, setCellLog] = useState<{
     title: string
@@ -198,6 +209,9 @@ export default function DashboardPage() {
     const y = new Date().getFullYear()
     return { start: `${y}-01-01`, end: `${y}-12-31` }
   })
+
+  const [collectionSearch, setCollectionSearch] = useState("")
+  const [recurringSearch, setRecurringSearch] = useState("")
   const rangeStart = dateRange.start
   const rangeEnd = dateRange.end
   const inRange = useMemo(
@@ -314,6 +328,16 @@ export default function DashboardPage() {
     return map
   }, [state.payments, gridYear])
 
+  const filteredGridUnits = useMemo(() => {
+    if (!collectionSearch.trim()) return gridUnits
+    const q = collectionSearch.toLowerCase()
+    return gridUnits.filter(
+      (apt) =>
+        apt.unit_number.toLowerCase().includes(q) ||
+        apt.floor.toLowerCase().includes(q)
+    )
+  }, [gridUnits, collectionSearch])
+
   // ── Recurring expenses grid ──
   const recurringSeries = useMemo(() => {
     const byKey = new Map<string, { categoryId: string; vendor: string; startKey: string; interval: number; amount: number; paidMonths: Set<string>; totalByYear: Map<number, number> }>()
@@ -339,6 +363,16 @@ export default function DashboardPage() {
       .map((s) => ({ ...s, categoryName: catName(s.categoryId) }))
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName) || a.vendor.localeCompare(b.vendor))
   }, [state.expenses, catName])
+
+  const filteredRecurringSeries = useMemo(() => {
+    if (!recurringSearch.trim()) return recurringSeries
+    const q = recurringSearch.toLowerCase()
+    return recurringSeries.filter(
+      (s) =>
+        s.categoryName.toLowerCase().includes(q) ||
+        s.vendor.toLowerCase().includes(q)
+    )
+  }, [recurringSeries, recurringSearch])
 
   function recurringCell(s: { startKey: string; interval: number; paidMonths: Set<string> }, key: string): MonthCellStatus {
     if (key < s.startKey) return "na"
@@ -391,6 +425,48 @@ export default function DashboardPage() {
     setTransferAmount("")
     setTransferNotes("")
     setTransferOpen(false)
+  }
+
+  function exportTransfersCsv() {
+    const transfers = state.transfers
+      ? [...state.transfers].filter((tr) => inRange(tr.date)).sort((a, b) => b.date.localeCompare(a.date))
+      : []
+    const headers = [t("Date"), t("Amount"), t("From"), t("To"), t("Notes")]
+    const rows = transfers.map((tr) => [
+      tr.date,
+      tr.amount,
+      t(tr.from_method),
+      t(tr.to_method),
+      tr.notes ?? "",
+    ])
+    downloadCsv(`transfers-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
+  function openEditTransfer(tr: Transfer) {
+    setEditTransfer(tr)
+    setEditDirection(tr.from_method === "cash" ? "cash_to_bank" : "bank_to_cash")
+    setEditAmount(String(tr.amount))
+    setEditDate(tr.date)
+    setEditNotes(tr.notes ?? "")
+    setEditOnDashboard(tr.on_dashboard)
+  }
+
+  function handleUpdateTransfer() {
+    if (!editTransfer) return
+    const amount = parseAmount(editAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: t("Enter a valid amount"), description: t("The transfer amount must be greater than zero."), variant: "destructive" })
+      return
+    }
+    if (!editDate) {
+      toast({ title: t("Pick a date"), description: t("The transfer needs a date."), variant: "destructive" })
+      return
+    }
+    const fromMethod = editDirection === "cash_to_bank" ? "cash" : "bank"
+    const toMethod = editDirection === "cash_to_bank" ? "bank" : "cash"
+    updateTransfer({ ...editTransfer, amount, from_method: fromMethod, to_method: toMethod, date: editDate, notes: editNotes, on_dashboard: editOnDashboard })
+    toast({ title: t("Transfer updated"), variant: "success" })
+    setEditTransfer(null)
   }
 
   // ── Cell-log openers: show the entries behind a clicked grid cell ──
@@ -648,6 +724,15 @@ export default function DashboardPage() {
         </div>
         {gridUnits.length > 0 ? (
           <>
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-sm"
+                placeholder={t("Search apartments...")}
+                value={collectionSearch}
+                onChange={(e) => setCollectionSearch(e.target.value)}
+              />
+            </div>
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
@@ -658,7 +743,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {gridUnits.map((apt) => {
+                  {filteredGridUnits.map((apt) => {
                     const cells = getMonthCells(apt.id, gridYear)
                     return (
                       <tr key={apt.id} className="border-t border-border hover:bg-muted/40">
@@ -708,6 +793,15 @@ export default function DashboardPage() {
         </div>
         {recurringSeries.length > 0 ? (
           <>
+            <div className="relative mb-2">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-sm"
+                placeholder={t("Search expenses...")}
+                value={recurringSearch}
+                onChange={(e) => setRecurringSearch(e.target.value)}
+              />
+            </div>
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
@@ -718,7 +812,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recurringSeries.map((s) => (
+                  {filteredRecurringSeries.map((s) => (
                     <tr key={`${s.categoryId}|${s.vendor}`} className="border-t border-border hover:bg-muted/40">
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-3 py-2">
                         <Link href={`/expenses?category=${s.categoryId}`} className="font-medium capitalize text-primary underline-offset-4 hover:underline">{s.categoryName}</Link>
@@ -923,13 +1017,26 @@ export default function DashboardPage() {
             </div>
             {state.transfers && state.transfers.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                  <Button variant="ghost" size="sm" onClick={exportTransfersCsv} className="h-7 gap-1 px-2 text-xs">
+                    <Download className="h-3 w-3" />
+                    {t("Export CSV")}
+                  </Button>
+                </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
                   {[...state.transfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map((tr) => (
                     <div key={tr.id} className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-muted-foreground">{formatDate(tr.date)}</span>
                       <span className="flex-1 truncate">{tr.from_method === "cash" ? t("Cash → Bank (deposit)") : t("Bank → Cash (withdrawal)")}</span>
                       <span className="nums font-medium">{formatCurrency(tr.amount)}</span>
+                      <button
+                        onClick={() => openEditTransfer(tr)}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-primary"
+                        aria-label={t("Edit transfer")}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => deleteTransfer(tr.id)}
                         className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
@@ -946,6 +1053,64 @@ export default function DashboardPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransferOpen(false)}>{t("Cancel")}</Button>
             <Button onClick={handleTransfer}>{t("Record Transfer")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transfer Dialog */}
+      <Dialog open={editTransfer !== null} onOpenChange={(o) => !o && setEditTransfer(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("Edit transfer")}</DialogTitle>
+            <DialogDescription>{t("Update this transfer between the cash box and the bank account.")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("Direction")}</Label>
+              <Select value={editDirection} onValueChange={(v) => setEditDirection(v as "cash_to_bank" | "bank_to_cash")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash_to_bank">{t("Cash → Bank (deposit)")}</SelectItem>
+                  <SelectItem value="bank_to_cash">{t("Bank → Cash (withdrawal)")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Amount (LE)")}</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Date")}</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("Notes (optional)")}</Label>
+              <Input
+                placeholder={t("e.g. monthly bank deposit")}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div>
+                <Label>{t("Affects dashboard balances")}</Label>
+                <p className="text-xs text-muted-foreground">{t("Off = recorded for reference only; the balance cards don't move.")}</p>
+              </div>
+              <Switch checked={editOnDashboard} onCheckedChange={setEditOnDashboard} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTransfer(null)}>{t("Cancel")}</Button>
+            <Button onClick={handleUpdateTransfer}>{t("Save changes")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
