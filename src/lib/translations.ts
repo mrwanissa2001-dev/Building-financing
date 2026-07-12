@@ -454,6 +454,26 @@ const AR: Record<string, string> = {
   "Year already exists": "السنة موجودة بالفعل",
   "Edit the existing {year} row instead.": "عدّل صف {year} الموجود بدلًا من ذلك.",
   "Loading settings...": "جارٍ تحميل الإعدادات...",
+
+  // ── Reports page ──
+  "Reports": "التقارير",
+  "Generate PDF reports for any date range.": "أنشئ تقارير PDF لأي نطاق زمني.",
+  "Select a date range to generate a report.": "اختر نطاقًا زمنيًا لإنشاء تقرير.",
+  "Income Summary": "ملخص الدخل",
+  "Expense Summary": "ملخص المصروفات",
+  "Balance Statement": "كشف الرصيد",
+  "Collections Overview": "نظرة عامة على التحصيلات",
+  "Total collected in the selected period": "إجمالي المُحصَّل في الفترة المحددة",
+  "All expenses by category": "كل المصروفات حسب الفئة",
+  "Cash vs bank, net position": "النقد مقابل البنك، صافي المركز",
+  "Payment status per apartment": "حالة السداد لكل شقة",
+  "Generate PDF": "توليد PDF",
+  "Total collected": "إجمالي المُحصَّل",
+  "Total spent": "إجمالي المصروف",
+  "Preview": "معاينة",
+  "Key totals for the selected range — {units} units paid.":
+    "الإجماليات الرئيسية للنطاق المحدد — {units} شقة دفعت.",
+  "Loading...": "جارٍ التحميل...",
 }
 
 export const DICTIONARIES: Partial<Record<Lang, Record<string, string>>> = {
