@@ -478,6 +478,12 @@ const AR: Record<string, string> = {
   "Summary table": "جدول الملخص",
   "Payment log": "سجل المدفوعات",
   "Expenses table": "جدول المصروفات",
+
+  // ── Category delete ──
+  "Delete category {name}?": "حذف الفئة {name}؟",
+  "This will permanently delete {category} and all expenses in it cannot be recategorized. This action can't be undone.":
+    "سيؤدي هذا إلى حذف فئة {category} نهائيًا وجميع المصروفات فيها لا يمكن إعادة تصنيفها. لا يمكن التراجع عن هذا الإجراء.",
+  "Category deleted": "تم حذف الفئة",
 }
 
 export const DICTIONARIES: Partial<Record<Lang, Record<string, string>>> = {

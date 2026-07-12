@@ -31,6 +31,7 @@ import {
   updateExpenseRow as sbUpdateExpense,
   deleteExpenseRow as sbDeleteExpense,
   insertCategory as sbInsertCategory,
+  deleteCategoryRow as sbDeleteCategory,
   insertPerson as sbInsertPerson,
   updatePersonRow as sbUpdatePerson,
   deletePersonRow as sbDeletePerson,
@@ -92,6 +93,7 @@ type StoreAction =
   | { type: 'UPDATE_EXPENSE'; payload: Expense }
   | { type: 'DELETE_EXPENSE'; payload: string }
   | { type: 'ADD_CATEGORY'; payload: ExpenseCategory }
+  | { type: 'DELETE_CATEGORY'; payload: string }
   | { type: 'ADD_PERSON'; payload: CategoryPerson }
   | { type: 'UPDATE_PERSON'; payload: CategoryPerson }
   | { type: 'DELETE_PERSON'; payload: string }
@@ -165,6 +167,14 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
 
     case 'ADD_CATEGORY':
       return { ...state, categories: [...state.categories, action.payload] }
+
+    case 'DELETE_CATEGORY':
+      return {
+        ...state,
+        categories: state.categories.filter((c) => c.id !== action.payload),
+        people: state.people.filter((p) => p.category_id !== action.payload),
+        expenses: state.expenses.filter((e) => e.category_id !== action.payload),
+      }
 
     case 'ADD_PERSON':
       return { ...state, people: [...state.people, action.payload] }
@@ -270,6 +280,7 @@ interface StoreContextValue {
   updateExpense: (expense: Expense) => void
   deleteExpense: (id: string) => void
   addCategory: (name: string) => ExpenseCategory
+  deleteCategory: (id: string) => void
   addPerson: (categoryId: string, name: string) => CategoryPerson
   updatePerson: (person: CategoryPerson) => void
   deletePerson: (id: string) => void
@@ -613,6 +624,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     sbInsertCategory(cat)
     return cat
   }, [])
+  const deleteCategory = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_CATEGORY', payload: id })
+    sbDeleteCategory(id)
+  }, [])
   const addPerson = useCallback((categoryId: string, name: string): CategoryPerson => {
     const person: CategoryPerson = { id: crypto.randomUUID(), category_id: categoryId, name }
     dispatch({ type: 'ADD_PERSON', payload: person })
@@ -742,6 +757,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateExpense,
     deleteExpense,
     addCategory,
+    deleteCategory,
     addPerson,
     updatePerson,
     deletePerson,

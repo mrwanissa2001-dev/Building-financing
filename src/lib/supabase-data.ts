@@ -273,6 +273,10 @@ export async function insertCategory(cat: ExpenseCategory) {
   return row ? (row as ExpenseCategory) : null
 }
 
+export async function deleteCategoryRow(id: string) {
+  return deleteRow('expense_categories', id, 'Category')
+}
+
 // ── Category people ──
 
 export async function insertPerson(person: CategoryPerson) {
