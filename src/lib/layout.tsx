@@ -29,6 +29,7 @@ export const REGISTRY: Record<PageKey, WidgetDef[]> = {
     { key: "expenses_grid", label: "Recurring expenses grid" },
     { key: "overdue", label: "Overdue alerts" },
     { key: "history", label: "Previous years" },
+    { key: "tasks", label: "Tasks" },
     { key: "notes", label: "Notes" },
     { key: "calculator", label: "Calculator" },
   ],

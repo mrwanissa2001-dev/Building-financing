@@ -17,6 +17,7 @@ import type {
   Transfer,
   BuildingSettings,
   PaymentMethod,
+  Task,
 } from './types'
 import {
   fetchAllData,
@@ -42,6 +43,10 @@ import {
   updateTransferRow as sbUpdateTransfer,
   deleteTransferRow as sbDeleteTransfer,
   updateSettingsRow as sbUpdateSettings,
+  getTasks as sbGetTasks,
+  insertTask as sbInsertTask,
+  updateTaskRow as sbUpdateTask,
+  deleteTaskRow as sbDeleteTask,
 } from './supabase-data'
 import {
   monthKey,
@@ -62,6 +67,7 @@ interface StoreState {
   people: CategoryPerson[]
   history: YearlyHistory[]
   transfers: Transfer[]
+  tasks: Task[]
   settings: BuildingSettings
   initialized: boolean
   loaded: boolean
@@ -75,6 +81,7 @@ const INITIAL_STATE: StoreState = {
   people: [],
   history: [],
   transfers: [],
+  tasks: [],
   settings: DEFAULT_SETTINGS,
   initialized: false,
   loaded: false,
@@ -105,6 +112,10 @@ type StoreAction =
   | { type: 'UPDATE_TRANSFER'; payload: Transfer }
   | { type: 'DELETE_TRANSFER'; payload: string }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<BuildingSettings> }
+  | { type: 'LOAD_TASKS'; payload: Task[] }
+  | { type: 'ADD_TASK'; payload: Task }
+  | { type: 'UPDATE_TASK'; payload: Task }
+  | { type: 'DELETE_TASK'; payload: string }
 
 // ── Reducer ──
 
@@ -241,6 +252,26 @@ function storeReducer(state: StoreState, action: StoreAction): StoreState {
         settings: { ...state.settings, ...action.payload },
       }
 
+    case 'LOAD_TASKS':
+      return { ...state, tasks: action.payload }
+
+    case 'ADD_TASK':
+      return { ...state, tasks: [action.payload, ...state.tasks] }
+
+    case 'UPDATE_TASK':
+      return {
+        ...state,
+        tasks: state.tasks.map((t) =>
+          t.id === action.payload.id ? action.payload : t
+        ),
+      }
+
+    case 'DELETE_TASK':
+      return {
+        ...state,
+        tasks: state.tasks.filter((t) => t.id !== action.payload),
+      }
+
     default:
       return state
   }
@@ -301,6 +332,9 @@ interface StoreContextValue {
   updateTransfer: (transfer: Transfer) => void
   deleteTransfer: (id: string) => void
   updateSettings: (data: Partial<BuildingSettings>) => void
+  addTask: (data: Omit<Task, 'id' | 'created_at'>) => Task
+  updateTask: (task: Task) => void
+  deleteTask: (id: string) => void
 
   importPayments: (rows: Omit<Payment, 'id' | 'created_at'>[]) => number
   importExpenses: (
@@ -408,7 +442,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function load() {
-      const data = await fetchAllData()
+      const [data, tasks] = await Promise.all([fetchAllData(), sbGetTasks()])
       if (data) {
         dispatch({
           type: 'LOAD',
@@ -420,6 +454,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             people: data.people,
             history: data.history,
             transfers: data.transfers,
+            tasks,
             settings: data.settings,
             initialized: true,
             loaded: true,
@@ -685,6 +720,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'UPDATE_SETTINGS', payload: data })
     sbUpdateSettings(data)
   }, [])
+  const addTask = useCallback((data: Omit<Task, 'id' | 'created_at'>): Task => {
+    const t: Task = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+    dispatch({ type: 'ADD_TASK', payload: t })
+    sbInsertTask(data).then((row) => {
+      if (row) dispatch({ type: 'UPDATE_TASK', payload: row })
+    })
+    return t
+  }, [])
+  const updateTask = useCallback((task: Task) => {
+    dispatch({ type: 'UPDATE_TASK', payload: task })
+    const { id, created_at, user_id, ...rest } = task
+    void created_at
+    void user_id
+    sbUpdateTask(id, rest)
+  }, [])
+  const deleteTask = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_TASK', payload: id })
+    sbDeleteTask(id)
+  }, [])
 
   // -- CSV bulk import --
 
@@ -783,6 +837,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateTransfer,
     deleteTransfer,
     updateSettings,
+    addTask,
+    updateTask,
+    deleteTask,
     importPayments,
     importExpenses,
   }
