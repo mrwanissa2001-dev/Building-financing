@@ -201,16 +201,3 @@ export interface ActiveSession {
   last_seen_at: string
 }
 
-// ── Tasks ──
-
-export interface Task {
-  id: string
-  user_id: string
-  title: string
-  description: string
-  due_date: string | null  // "YYYY-MM-DD" or null
-  status: 'todo' | 'in_progress' | 'done'
-  priority: 'low' | 'medium' | 'high'
-  color: string
-  created_at: string
-}
