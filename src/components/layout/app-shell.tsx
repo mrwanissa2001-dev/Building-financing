@@ -11,6 +11,7 @@ import { ToastProvider, useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { onSyncError } from "@/lib/supabase-data"
 import { supabase } from "@/lib/supabase"
+import { useSessionGuard } from "@/lib/session-guard"
 
 // Database writes happen in the background — surface any failure as a
 // toast so data never silently vanishes on the next reload
@@ -30,6 +31,7 @@ function SyncErrorToaster() {
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [checked, setChecked] = useState(false)
+  useSessionGuard()
 
   useEffect(() => {
     if (!supabase) {
