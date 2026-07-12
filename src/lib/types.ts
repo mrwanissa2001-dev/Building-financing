@@ -160,3 +160,41 @@ export interface OccupancyBreakdown {
   traveling_but_paying: number
   unregistered: number
 }
+
+// ── Auth types ──
+
+export interface Profile {
+  id: string
+  email: string
+  full_name: string | null
+  building_name: string | null
+  status: 'pending_email' | 'pending_approval' | 'approved' | 'rejected'
+  rejected_reason: string | null
+  is_admin: boolean
+  created_at: string
+  approved_at: string | null
+  approved_by: string | null
+}
+
+export interface ActiveSession {
+  id: string
+  user_id: string
+  session_token: string
+  device_hint: string | null
+  created_at: string
+  last_seen_at: string
+}
+
+// ── Tasks ──
+
+export interface Task {
+  id: string
+  user_id: string
+  title: string
+  description: string
+  due_date: string | null  // "YYYY-MM-DD" or null
+  status: 'todo' | 'in_progress' | 'done'
+  priority: 'low' | 'medium' | 'high'
+  color: string
+  created_at: string
+}
