@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef, Suspense } from "react"
+import { useState, useMemo, useRef, Suspense, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { useStore } from "@/lib/store"
 import { useLayout } from "@/lib/layout"
@@ -160,6 +160,10 @@ function ExpensesContent() {
   const [sortField, setSortField] = useState<SortField>("date")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
 
+  // Pagination
+  const PAGE_SIZE = 20
+  const [currentPage, setCurrentPage] = useState(1)
+
   // Recurring grid year
   const [gridYear, setGridYear] = useState(() => new Date().getFullYear())
 
@@ -221,6 +225,17 @@ function ExpensesContent() {
     sortField,
     sortDirection,
   ])
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filterCategory, filterMethod, filterDateStart, filterDateEnd])
+
+  const totalPages = Math.max(1, Math.ceil(filteredExpenses.length / PAGE_SIZE))
+  const paginatedExpenses = filteredExpenses.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  )
 
   // ── Recurring series for the month grid ──
   //
@@ -823,7 +838,7 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredExpenses.map((expense) => (
+                paginatedExpenses.map((expense) => (
                   <TableRow key={expense.id}>
                     <TableCell className="whitespace-nowrap">
                       {formatDate(expense.date)}
@@ -898,6 +913,40 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
             </TableBody>
           </Table>
         </div>
+        {filteredExpenses.length > 0 && (
+          <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {t("Showing {start}–{end} of {total}", {
+                start: (currentPage - 1) * PAGE_SIZE + 1,
+                end: Math.min(currentPage * PAGE_SIZE, filteredExpenses.length),
+                total: filteredExpenses.length,
+              })}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                {t("Previous")}
+              </Button>
+              <span className="text-sm tabular-nums">
+                {t("Page {n} of {total}", { n: currentPage, total: totalPages })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                {t("Next")}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       </div>
       )}

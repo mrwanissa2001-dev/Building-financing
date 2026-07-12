@@ -364,6 +364,12 @@ const AR: Record<string, string> = {
   "Off = logged as a bill still owed; it stays out of dashboard totals until paid.":
     "إيقاف = يُسجَّل كفاتورة مستحقة؛ يبقى خارج إجماليات لوحة التحكم حتى يُدفع.",
 
+  // ── Expenses table pagination ──
+  "Previous": "السابق",
+  "Next": "التالي",
+  "Page {n} of {total}": "الصفحة {n} من {total}",
+  "Showing {start}–{end} of {total}": "عرض {start}–{end} من {total}",
+
   // ── Expenses page (recurring) ──
   "Additional months already paid": "أشهر إضافية مدفوعة بالفعل",
   "Creates a separate log entry for each additional paid month after the date above.":
