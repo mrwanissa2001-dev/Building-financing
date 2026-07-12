@@ -1,11 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/lib/store"
 import { useI18n, LANGUAGES } from "@/lib/i18n"
 import { APP_VERSION } from "@/lib/constants"
+import { supabase } from "@/lib/supabase"
 import {
   LayoutDashboard,
   Building2,
@@ -19,6 +20,7 @@ import {
   Globe,
   CalendarDays,
   FileText,
+  LogOut,
 } from "lucide-react"
 import { useState } from "react"
 
@@ -39,10 +41,19 @@ interface SidebarProps {
 
 export function Sidebar({ theme, toggleTheme }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { state } = useStore()
   const { t, lang, setLang } = useI18n()
   const buildingName = state.settings.building_name
+
+  async function handleLogout() {
+    if (supabase) {
+      await supabase.auth.signOut()
+    }
+    sessionStorage.removeItem("buildfin.session")
+    router.push("/auth/login")
+  }
 
   return (
     <>
@@ -136,6 +147,14 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
           >
             {theme === "dark" ? <Sun className="h-5 w-5 shrink-0" /> : <Moon className="h-5 w-5 shrink-0" />}
             <span className="flex-1 text-start">{theme === "dark" ? t("Light Mode") : t("Dark Mode")}</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-destructive"
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            <span className="flex-1 text-start">Sign out</span>
           </button>
 
           <p className="px-3 pt-1 text-[10px] text-muted-foreground">BuildFin {APP_VERSION}</p>
