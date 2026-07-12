@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { Sidebar } from "./sidebar"
 import { useTheme } from "@/hooks/use-theme"
 import { StoreProvider } from "@/lib/store"
@@ -9,6 +10,7 @@ import { LayoutProvider } from "@/lib/layout"
 import { ToastProvider, useToast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { onSyncError } from "@/lib/supabase-data"
+import { supabase } from "@/lib/supabase"
 
 // Database writes happen in the background — surface any failure as a
 // toast so data never silently vanishes on the next reload
@@ -25,24 +27,94 @@ function SyncErrorToaster() {
   return null
 }
 
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    if (!supabase) {
+      // No supabase configured — allow access (dev mode / demo)
+      setChecked(true)
+      return
+    }
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        router.replace("/auth/login")
+        return
+      }
+
+      // Check profile approval status
+      const { data: profile } = await supabase!
+        .from("profiles")
+        .select("status")
+        .eq("id", session.user.id)
+        .single()
+
+      if (profile && profile.status !== "approved") {
+        await supabase!.auth.signOut()
+        router.replace("/auth/pending")
+        return
+      }
+
+      setChecked(true)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.replace("/auth/login")
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [router])
+
+  if (!checked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground text-sm">Loading…</div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme()
+  const pathname = usePathname()
+
+  const isPublicRoute =
+    pathname.startsWith("/auth") || pathname.startsWith("/guest")
+
+  if (isPublicRoute) {
+    return (
+      <LanguageProvider>
+        <ToastProvider>
+          {children}
+          <Toaster />
+        </ToastProvider>
+      </LanguageProvider>
+    )
+  }
 
   return (
     <LanguageProvider>
       <StoreProvider>
         <LayoutProvider>
           <ToastProvider>
-            <SyncErrorToaster />
-            <div className="flex min-h-screen">
-              <Sidebar theme={theme} toggleTheme={toggleTheme} />
-              <main className="flex-1 lg:ps-64">
-                <div className="mx-auto max-w-7xl px-4 py-6 pt-16 sm:px-6 lg:px-8 lg:pt-6">
-                  {children}
-                </div>
-              </main>
-            </div>
-            <Toaster />
+            <AuthGuard>
+              <SyncErrorToaster />
+              <div className="flex min-h-screen">
+                <Sidebar theme={theme} toggleTheme={toggleTheme} />
+                <main className="flex-1 lg:ps-64">
+                  <div className="mx-auto max-w-7xl px-4 py-6 pt-16 sm:px-6 lg:px-8 lg:pt-6">
+                    {children}
+                  </div>
+                </main>
+              </div>
+              <Toaster />
+            </AuthGuard>
           </ToastProvider>
         </LayoutProvider>
       </StoreProvider>
