@@ -34,7 +34,6 @@ import { useI18n } from "@/lib/i18n"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -204,6 +203,9 @@ function ApartmentsContent() {
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null)
+
+  const [exportPaymentStart, setExportPaymentStart] = useState("")
+  const [exportPaymentEnd, setExportPaymentEnd] = useState("")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -583,21 +585,27 @@ function ApartmentsContent() {
 
   function exportPaymentsCsv() {
     const aptById = new Map(state.apartments.map((a) => [a.id, a]))
-    const headers = ["unit_number", "payer_name", "payer_relation", "amount", "method", "date_paid", "first_month", "last_month", "recurring", "extra", "on_dashboard", "notes"]
-    const rows = state.payments.map((p) => [
-      aptById.get(p.apartment_id)?.unit_number ?? "",
-      p.payer_name,
-      p.payer_relation,
-      p.amount,
-      p.method,
-      p.date_paid,
-      monthKeyOrNull(p.period_start) ?? "",
-      monthKeyOrNull(p.period_end) ?? "",
-      p.recurring ? "yes" : "",
-      p.extra ? "yes" : "",
-      p.on_dashboard === false ? "no" : "yes",
-      p.notes,
-    ])
+    const headers = ["date", "unit", "floor", "payer", "amount", "method", "period_start", "period_end", "notes"]
+    const rows = state.payments
+      .filter((p) => {
+        if (exportPaymentStart && p.date_paid < exportPaymentStart) return false
+        if (exportPaymentEnd && p.date_paid > exportPaymentEnd) return false
+        return true
+      })
+      .map((p) => {
+        const apt = aptById.get(p.apartment_id)
+        return [
+          p.date_paid,
+          apt?.unit_number ?? "",
+          apt?.floor ?? "",
+          p.payer_name,
+          p.amount,
+          p.method,
+          p.period_start,
+          p.period_end,
+          p.notes,
+        ]
+      })
     downloadCsv(`payments-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
   }
 
@@ -655,16 +663,27 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         const datePaid = normalizeDate(o.date_paid || "")
         if (!apt || isNaN(amount) || !datePaid) { skipped++; continue }
 
-        // months covered: first_month/last_month, else legacy period
-        // dates, else the month of the payment date
-        const firstKey =
-          monthKeyOrNull(o.first_month || "") ??
-          monthKeyOrNull(o.period_start || "") ??
-          monthKey(datePaid)
-        const lastKey =
-          monthKeyOrNull(o.last_month || "") ??
-          monthKeyOrNull(o.period_end || "") ??
-          firstKey
+        // months covered: period_start/period_end (full dates), else
+        // first_month/last_month (month keys), else the month of the payment date
+        let periodStart = o.period_start || ""
+        let periodEnd = o.period_end || ""
+
+        if (periodStart && periodEnd) {
+          // full dates provided: use them directly
+          // (already in the right format)
+        } else {
+          // fall back to month keys
+          const firstKey =
+            monthKeyOrNull(o.first_month || "") ??
+            monthKeyOrNull(o.period_start || "") ??
+            monthKey(datePaid)
+          const lastKey =
+            monthKeyOrNull(o.last_month || "") ??
+            monthKeyOrNull(o.period_end || "") ??
+            firstKey
+          periodStart = firstDayOfMonth(firstKey)
+          periodEnd = lastDayOfMonth(lastKey >= firstKey ? lastKey : firstKey)
+        }
 
         const relRaw = (o.payer_relation || "").toLowerCase()
         rows.push({
@@ -674,8 +693,8 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           amount,
           method: (o.method || "").toLowerCase() === "bank" ? "bank" : "cash",
           date_paid: datePaid,
-          period_start: firstDayOfMonth(firstKey),
-          period_end: lastDayOfMonth(lastKey >= firstKey ? lastKey : firstKey),
+          period_start: periodStart,
+          period_end: periodEnd,
           recurring: ["yes", "true", "1"].includes((o.recurring || "").toLowerCase()),
           extra: ["yes", "true", "1"].includes((o.extra || "").toLowerCase()),
           on_dashboard: !["no", "false", "0"].includes((o.on_dashboard || "").toLowerCase()),
@@ -987,10 +1006,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{t("Delete Apartment")}</DialogTitle>
-              <DialogDescription>
-                {t("This will permanently delete this apartment and all associated payments. This action cannot be undone.")}
-              </DialogDescription>
             </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {t("This will permanently delete this apartment and all associated payments. This action cannot be undone.")}
+            </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>{t("Cancel")}</Button>
               <Button variant="destructive" onClick={() => deleteConfirmId && confirmDelete(deleteConfirmId)}>{t("Delete")}</Button>
@@ -1350,7 +1369,6 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("Add Apartment")}</DialogTitle>
-            <DialogDescription>{t("Fill in the apartment details below.")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1443,10 +1461,10 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Delete Payment")}</DialogTitle>
-            <DialogDescription>
-              {t("This will permanently remove this payment entry. This action cannot be undone.")}
-            </DialogDescription>
           </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("This will permanently remove this payment entry. This action cannot be undone.")}
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletePaymentId(null)}>{t("Cancel")}</Button>
             <Button
@@ -1483,7 +1501,6 @@ Wrap any value containing a comma in double quotes. Output only the CSV content,
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPayment ? t("Edit Payment") : t("Add Payment")}</DialogTitle>
-            <DialogDescription>{editingPayment ? t("Update the payment details below.") : t("Record a new payment from a resident.")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>
