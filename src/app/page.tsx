@@ -17,6 +17,7 @@ import {
   Repeat,
   ArrowLeftRight,
   Trash2,
+  Download,
 } from "lucide-react"
 import {
   BarChart,
@@ -37,7 +38,7 @@ import { useStore } from "@/lib/store"
 import { useLayout } from "@/lib/layout"
 import { useI18n } from "@/lib/i18n"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
-import { parseAmount } from "@/lib/csv"
+import { parseAmount, buildCsv, downloadCsv } from "@/lib/csv"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -393,6 +394,21 @@ export default function DashboardPage() {
     setTransferOpen(false)
   }
 
+  function exportTransfersCsv() {
+    const transfers = state.transfers
+      ? [...state.transfers].filter((tr) => inRange(tr.date)).sort((a, b) => b.date.localeCompare(a.date))
+      : []
+    const headers = [t("Date"), t("Amount"), t("From"), t("To"), t("Notes")]
+    const rows = transfers.map((tr) => [
+      tr.date,
+      tr.amount,
+      t(tr.from_method),
+      t(tr.to_method),
+      tr.notes ?? "",
+    ])
+    downloadCsv(`transfers-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(headers, rows))
+  }
+
   // ── Cell-log openers: show the entries behind a clicked grid cell ──
   function openCollectionCell(apt: { id: string; unit_number: string }, monthIndex: number) {
     const key = `${gridYear}-${String(monthIndex + 1).padStart(2, "0")}`
@@ -430,7 +446,6 @@ export default function DashboardPage() {
       rows,
     })
   }
-
   const rangeQuery = `start=${rangeStart}&end=${rangeEnd}`
 
   const heroDeltaUp = balanceDelta !== null && balanceDelta >= 0
@@ -923,7 +938,13 @@ export default function DashboardPage() {
             </div>
             {state.transfers && state.transfers.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{t("Recent transfers")}</p>
+                  <Button variant="ghost" size="sm" onClick={exportTransfersCsv} className="h-7 gap-1 px-2 text-xs">
+                    <Download className="h-3 w-3" />
+                    {t("Export CSV")}
+                  </Button>
+                </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
                   {[...state.transfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map((tr) => (
                     <div key={tr.id} className="flex items-center justify-between gap-2 text-xs">
