@@ -17,6 +17,8 @@ import {
   Menu,
   X,
   Globe,
+  CalendarDays,
+  FileText,
 } from "lucide-react"
 import { useState } from "react"
 
@@ -24,6 +26,8 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/apartments", label: "Apartments & Payments", icon: Building2 },
   { href: "/expenses", label: "Expenses", icon: Receipt },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/reports", label: "Reports", icon: FileText },
   { href: "/settings", label: "Building Setup", icon: Settings },
   { href: "/appearance", label: "Settings", icon: SlidersHorizontal },
 ]

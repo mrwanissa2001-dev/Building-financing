@@ -7,7 +7,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 // Adding an entry here makes it appear (enabled) for existing users on next
 // load; removing one drops it from saved configs automatically.
 
-export type PageKey = "dashboard" | "apartments" | "expenses"
+export type PageKey = "dashboard" | "apartments" | "expenses" | "calendar" | "reports"
 
 export interface WidgetDef {
   key: string
@@ -29,6 +29,8 @@ export const REGISTRY: Record<PageKey, WidgetDef[]> = {
     { key: "expenses_grid", label: "Recurring expenses grid" },
     { key: "overdue", label: "Overdue alerts" },
     { key: "history", label: "Previous years" },
+    { key: "notes", label: "Notes" },
+    { key: "calculator", label: "Calculator" },
   ],
   apartments: [
     { key: "summary", label: "Summary table" },
@@ -39,12 +41,16 @@ export const REGISTRY: Record<PageKey, WidgetDef[]> = {
     { key: "recurring_grid", label: "Recurring expenses grid" },
     { key: "expenses_table", label: "Expenses table" },
   ],
+  calendar: [],
+  reports: [],
 }
 
 export const PAGE_LABELS: Record<PageKey, string> = {
   dashboard: "Dashboard",
   apartments: "Apartments & Payments",
   expenses: "Expenses",
+  calendar: "Calendar",
+  reports: "Reports",
 }
 
 export interface WidgetState {
@@ -65,6 +71,8 @@ function defaultConfig(): LayoutConfig {
     dashboard: defaultsFor("dashboard"),
     apartments: defaultsFor("apartments"),
     expenses: defaultsFor("expenses"),
+    calendar: [],
+    reports: [],
   }
 }
 
@@ -105,6 +113,8 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
         dashboard: reconcile("dashboard", saved.dashboard),
         apartments: reconcile("apartments", saved.apartments),
         expenses: reconcile("expenses", saved.expenses),
+        calendar: reconcile("calendar", saved.calendar),
+        reports: reconcile("reports", saved.reports),
       })
     } catch {
       /* ignore corrupt storage */

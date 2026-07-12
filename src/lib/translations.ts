@@ -11,10 +11,17 @@ const AR: Record<string, string> = {
   "Apartments & Payments": "الشقق والمدفوعات",
   "Expenses": "المصروفات",
   "Building Setup": "إعدادات المبنى",
+  "Calendar": "التقويم",
   "Light Mode": "الوضع الفاتح",
   "Dark Mode": "الوضع الداكن",
   "Open menu": "فتح القائمة",
   "Close menu": "إغلاق القائمة",
+
+  // ── Calendar page ──
+  "All transactions on {date}": "كل المعاملات في {date}",
+  "No transactions on this day.": "لا توجد معاملات في هذا اليوم.",
+  "Payments": "المدفوعات",
+  "Transfers": "التحويلات",
 
   // ── Common ──
   "Add": "إضافة",
@@ -25,8 +32,15 @@ const AR: Record<string, string> = {
   "Close": "إغلاق",
   "Back": "رجوع",
   "Actions": "إجراءات",
-  "Notes": "ملاحظات",
+  "Notes": "الملاحظات",
+  "Calculator": "الآلة الحاسبة",
+  "Clear": "مسح",
+  "Backspace": "حذف",
   "Notes (optional)": "ملاحظات (اختياري)",
+  "Add Note": "إضافة ملاحظة",
+  "No notes yet. Click + to add one.": "لا توجد ملاحظات بعد. اضغط + لإضافة واحدة.",
+  "Delete note": "حذف الملاحظة",
+  "Note title": "عنوان الملاحظة",
   "Optional": "اختياري",
   "Amount": "المبلغ",
   "Amount (LE)": "المبلغ (LE)",
@@ -185,11 +199,6 @@ const AR: Record<string, string> = {
   "Current:": "الحالي:",
   "Recent transfers": "التحويلات الأخيرة",
   "Delete transfer": "حذف التحويل",
-  "Edit transfer": "تعديل التحويل",
-  "Update this transfer between the cash box and the bank account.":
-    "عدّل هذا التحويل بين صندوق النقد والحساب البنكي.",
-  "Transfer updated": "تم تحديث التحويل",
-  "Save changes": "حفظ التغييرات",
   "Record Transfer": "تسجيل التحويل",
   "Transfer recorded": "تم تسجيل التحويل",
   "{amount} moved from {from} to {to}.": "تم نقل {amount} من {from} إلى {to}.",
@@ -212,12 +221,12 @@ const AR: Record<string, string> = {
   "Add Payment": "إضافة دفعة",
   "Export CSV": "تصدير CSV",
   "Import CSV": "استيراد CSV",
+  "Export Payments": "تصدير المدفوعات",
+  "Export Expenses": "تصدير المصروفات",
   "Copy CSV Prompt": "نسخ تعليمات CSV",
   "Copy an AI prompt that converts your raw data into an import-ready CSV":
     "انسخ تعليمات للذكاء الاصطناعي تحوّل بياناتك الخام إلى ملف CSV جاهز للاستيراد",
   "Search by name, unit, or payer...": "ابحث بالاسم أو رقم الوحدة أو الدافع...",
-  "Search apartments...": "ابحث عن الشقق...",
-  "Search expenses...": "ابحث عن المصروفات...",
   "All Buildings": "كل المباني",
   "All Floors": "كل الطوابق",
   "All Status": "كل الحالات",
@@ -245,9 +254,6 @@ const AR: Record<string, string> = {
   "Delete payment": "حذف الدفعة",
   "Payment History": "سجل مدفوعات الشقة",
   "No payments recorded": "لا توجد مدفوعات مسجلة",
-  "Fill in the apartment details below.": "املأ بيانات الشقة أدناه.",
-  "Update the payment details below.": "حدّث بيانات الدفعة أدناه.",
-  "Record a new payment from a resident.": "سجّل دفعة جديدة من ساكن.",
   "Apartment Details": "بيانات الشقة",
   "Second Inhabitant": "الساكن الثاني",
   "Phone 1": "هاتف 1",
@@ -323,7 +329,6 @@ const AR: Record<string, string> = {
   ", {n} rows skipped": "، وتم تخطي {n} صف",
 
   // ── Expenses page ──
-  "Date Range": "النطاق الزمني",
   "Add Expense": "إضافة مصروف",
   "Track and manage building expenses": "تتبع وإدارة مصروفات المبنى",
   "Loading expenses...": "جارٍ تحميل المصروفات...",
@@ -340,14 +345,11 @@ const AR: Record<string, string> = {
     "لا توجد مصروفات متكررة بعد — فعّل «متكرر» عند إضافة مصروف",
   "No expenses found": "لا توجد مصروفات",
   "Recurring": "متكرر",
-  "Edit Payment": "تعديل الدفعة",
   "Edit expense": "تعديل المصروف",
   "Delete expense": "حذف المصروف",
   "Edit Expense": "تعديل مصروف",
   "Update the expense details below.": "حدّث بيانات المصروف أدناه.",
   "Fill in the details to record a new expense.": "املأ البيانات لتسجيل مصروف جديد.",
-  "Add category…": "إضافة فئة…",
-  "Add relation…": "إضافة صلة…",
   "Select category": "اختر فئة",
   "{n} staff under this category": "{n} من العاملين تحت هذه الفئة",
   "Select method": "اختر طريقة الدفع",
@@ -370,12 +372,6 @@ const AR: Record<string, string> = {
   "Click to toggle paid / not paid": "اضغط للتبديل بين مدفوع / غير مدفوع",
   "Off = logged as a bill still owed; it stays out of dashboard totals until paid.":
     "إيقاف = يُسجَّل كفاتورة مستحقة؛ يبقى خارج إجماليات لوحة التحكم حتى يُدفع.",
-
-  // ── Expenses table pagination ──
-  "Previous": "السابق",
-  "Next": "التالي",
-  "Page {n} of {total}": "الصفحة {n} من {total}",
-  "Showing {start}–{end} of {total}": "عرض {start}–{end} من {total}",
 
   // ── Expenses page (recurring) ──
   "Additional months already paid": "أشهر إضافية مدفوعة بالفعل",
@@ -459,44 +455,25 @@ const AR: Record<string, string> = {
   "Edit the existing {year} row instead.": "عدّل صف {year} الموجود بدلًا من ذلك.",
   "Loading settings...": "جارٍ تحميل الإعدادات...",
 
-  // ── Date range picker ──
-  "All time": "كل الفترات",
-  "Today": "اليوم",
-  "This week": "هذا الأسبوع",
-  "This month": "هذا الشهر",
-  "This year": "هذه السنة",
-  "Custom": "مخصص",
-  "Apply": "تطبيق",
-  "Start": "بداية",
-  "End": "نهاية",
-  "Previous month": "الشهر السابق",
-  "Next month": "الشهر التالي",
-
-  // ── Appearance / widget layout page ──
-  "Choose which widgets appear on each page and the order they show in. Changes apply instantly and are saved on this device.":
-    "اختر الأدوات التي تظهر في كل صفحة وترتيبها. التغييرات تُطبّق فورًا وتُحفظ على هذا الجهاز.",
-  "widgets shown": "أداة معروضة",
-  "use the arrows to move a widget above or below another.":
-    "استخدم الأسهم لنقل أداة أعلى أو أسفل أخرى.",
-  "Reset": "إعادة ضبط",
-  "Total balance": "الرصيد الإجمالي",
-  "Collected this month": "المحصّل هذا الشهر",
-  "Spent this month": "المصروف هذا الشهر",
-  "Net this month": "الصافي هذا الشهر",
-  "Income vs expenses chart": "رسم الدخل مقابل المصروفات",
-  "Running balance chart": "رسم الرصيد التراكمي",
-  "Expenses by category": "المصروفات حسب الفئة",
-  "Budget vs actual": "الميزانية مقابل الفعلي",
-  "Payments collection grid": "شبكة تحصيل المدفوعات",
-  "Summary table": "جدول الملخص",
-  "Payment log": "سجل المدفوعات",
-  "Expenses table": "جدول المصروفات",
-
-  // ── Category delete ──
-  "Delete category {name}?": "حذف الفئة {name}؟",
-  "This will permanently delete {category} and all expenses in it cannot be recategorized. This action can't be undone.":
-    "سيؤدي هذا إلى حذف فئة {category} نهائيًا وجميع المصروفات فيها لا يمكن إعادة تصنيفها. لا يمكن التراجع عن هذا الإجراء.",
-  "Category deleted": "تم حذف الفئة",
+  // ── Reports page ──
+  "Reports": "التقارير",
+  "Generate PDF reports for any date range.": "أنشئ تقارير PDF لأي نطاق زمني.",
+  "Select a date range to generate a report.": "اختر نطاقًا زمنيًا لإنشاء تقرير.",
+  "Income Summary": "ملخص الدخل",
+  "Expense Summary": "ملخص المصروفات",
+  "Balance Statement": "كشف الرصيد",
+  "Collections Overview": "نظرة عامة على التحصيلات",
+  "Total collected in the selected period": "إجمالي المُحصَّل في الفترة المحددة",
+  "All expenses by category": "كل المصروفات حسب الفئة",
+  "Cash vs bank, net position": "النقد مقابل البنك، صافي المركز",
+  "Payment status per apartment": "حالة السداد لكل شقة",
+  "Generate PDF": "توليد PDF",
+  "Total collected": "إجمالي المُحصَّل",
+  "Total spent": "إجمالي المصروف",
+  "Preview": "معاينة",
+  "Key totals for the selected range — {units} units paid.":
+    "الإجماليات الرئيسية للنطاق المحدد — {units} شقة دفعت.",
+  "Loading...": "جارٍ التحميل...",
 }
 
 export const DICTIONARIES: Partial<Record<Lang, Record<string, string>>> = {
