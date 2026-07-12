@@ -72,6 +72,7 @@ import { TrendBadge } from "@/components/dashboard/trend-badge"
 import { Sparkline } from "@/components/dashboard/sparkline"
 import { ChartTooltip } from "@/components/dashboard/chart-tooltip"
 import { DateRangePicker, rangeLabel, type DateRange } from "@/components/ui/date-range-picker"
+import { NotesWidget } from "@/components/dashboard/notes-widget"
 
 // distinct categorical hues so each expense category reads apart in the donut
 const CAT = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)", "var(--cat-5)", "var(--cat-6)"]
@@ -93,6 +94,7 @@ const SPAN: Record<string, string> = {
   expenses_grid: "lg:col-span-12",
   overdue: "lg:col-span-12",
   history: "lg:col-span-12",
+  notes: "lg:col-span-6",
 }
 
 const unitCompare = (a: string, b: string) =>
@@ -895,6 +897,7 @@ export default function DashboardPage() {
         )}
       </Card>
     ),
+    notes: <NotesWidget />,
     history:
       state.history.length > 0 ? (
         <Card className="p-5">
