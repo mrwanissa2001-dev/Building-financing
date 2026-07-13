@@ -40,9 +40,10 @@ const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldCheck }
 interface SidebarProps {
   theme: "light" | "dark"
   toggleTheme: () => void
+  basePath?: string
 }
 
-export function Sidebar({ theme, toggleTheme }: SidebarProps) {
+export function Sidebar({ theme, toggleTheme, basePath = "" }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -120,14 +121,15 @@ export function Sidebar({ theme, toggleTheme }: SidebarProps) {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4">
           {[...navItems, ...(isAdmin ? [adminNavItem] : [])].map((item) => {
+            const fullHref = basePath + item.href
             const isActive =
               item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href)
+                ? pathname === basePath || pathname === basePath + "/"
+                : pathname.startsWith(basePath + item.href)
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={fullHref}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",

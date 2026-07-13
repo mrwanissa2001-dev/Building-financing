@@ -352,7 +352,7 @@ interface StoreContextValue {
   ) => Promise<number>
 }
 
-const StoreContext = createContext<StoreContextValue | null>(null)
+export const StoreContext = createContext<StoreContextValue | null>(null)
 
 // ── Provider ──
 
