@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useState,
 } from "react"
+import { StoreContext } from "./store"
 import type {
   Apartment,
   Payment,
@@ -915,6 +916,78 @@ export function GuestStoreProvider({ children }: { children: React.ReactNode }) 
     [toast]
   )
 
+  const importApartments = useCallback(
+    (rows: Omit<import("./types").Apartment, "id" | "created_at">[]): number => {
+      let imported = 0
+      for (const data of rows) {
+        if (state.apartments.length + imported >= 6) break
+        dispatch({ type: "ADD_APARTMENT", payload: { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() } })
+        imported++
+      }
+      return imported
+    },
+    [state.apartments.length]
+  )
+
+  // Nested ops objects — mirror what StoreProvider builds so the real
+  // page components work unchanged when provided via StoreContext.
+  const apartmentOps = {
+    list: useCallback(() => state.apartments, [state.apartments]),
+    get: useCallback((id: string) => state.apartments.find((a) => a.id === id), [state.apartments]),
+    create: useCallback((data: Omit<import("./types").Apartment, "id" | "created_at">) => {
+      const apt: import("./types").Apartment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+      dispatch({ type: "ADD_APARTMENT", payload: apt })
+      return apt
+    }, []),
+    update: useCallback((id: string, data: Partial<import("./types").Apartment>) => {
+      dispatch({ type: "UPDATE_APARTMENT", payload: { id, ...data } as import("./types").Apartment })
+    }, []),
+    delete: useCallback((id: string) => dispatch({ type: "DELETE_APARTMENT", payload: id }), []),
+  }
+
+  const paymentOps = {
+    list: useCallback(() => state.payments, [state.payments]),
+    listByApartment: useCallback((aptId: string) => state.payments.filter((p) => p.apartment_id === aptId), [state.payments]),
+    create: useCallback((data: Omit<import("./types").Payment, "id" | "created_at">) => {
+      const p: import("./types").Payment = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+      dispatch({ type: "ADD_PAYMENT", payload: p })
+      return p
+    }, []),
+    update: useCallback((id: string, data: Partial<import("./types").Payment>) => {
+      dispatch({ type: "UPDATE_PAYMENT", payload: { id, ...data } as import("./types").Payment })
+    }, []),
+    delete: useCallback((id: string) => dispatch({ type: "DELETE_PAYMENT", payload: id }), []),
+  }
+
+  const expenseOps = {
+    list: useCallback(() => state.expenses, [state.expenses]),
+    create: useCallback((data: Omit<import("./types").Expense, "id" | "created_at">) => {
+      const e: import("./types").Expense = { ...data, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+      dispatch({ type: "ADD_EXPENSE", payload: e })
+      return e
+    }, []),
+    update: useCallback((id: string, data: Partial<import("./types").Expense>) => {
+      dispatch({ type: "UPDATE_EXPENSE", payload: { id, ...data } as import("./types").Expense })
+    }, []),
+    delete: useCallback((id: string) => dispatch({ type: "DELETE_EXPENSE", payload: id }), []),
+  }
+
+  const categoryOps = {
+    list: useCallback(() => state.categories, [state.categories]),
+    create: useCallback((name: string): import("./types").ExpenseCategory => {
+      const cat: import("./types").ExpenseCategory = { id: crypto.randomUUID(), name }
+      dispatch({ type: "ADD_CATEGORY", payload: cat })
+      return cat
+    }, []),
+  }
+
+  const settingsOps = {
+    get: useCallback(() => state.settings, [state.settings]),
+    update: useCallback((data: Partial<import("./types").BuildingSettings>) => {
+      dispatch({ type: "UPDATE_SETTINGS", payload: data })
+    }, []),
+  }
+
   const value: GuestStoreContextValue = {
     state,
     addApartment,
@@ -946,9 +1019,49 @@ export function GuestStoreProvider({ children }: { children: React.ReactNode }) 
     importExpenses,
   }
 
+  // Full StoreContextValue shape so real page components work unchanged
+  // when this provider is in the tree instead of StoreProvider.
+  const storeValue = {
+    state,
+    apartments: apartmentOps,
+    payments: paymentOps,
+    expenses: expenseOps,
+    categories: categoryOps,
+    settings: settingsOps,
+    addApartment: (data: Omit<import("./types").Apartment, "id" | "created_at">) => addApartment(data) as import("./types").Apartment,
+    updateApartment,
+    deleteApartment,
+    addPayment: (data: Omit<import("./types").Payment, "id" | "created_at">) => addPayment(data) as import("./types").Payment,
+    updatePayment,
+    deletePayment,
+    addExpense: (data: Omit<import("./types").Expense, "id" | "created_at">) => addExpense(data) as import("./types").Expense,
+    updateExpense,
+    deleteExpense,
+    addCategory,
+    deleteCategory,
+    addPerson,
+    updatePerson,
+    deletePerson,
+    addHistory,
+    updateHistory,
+    deleteHistory,
+    addTransfer,
+    updateTransfer,
+    deleteTransfer,
+    updateSettings,
+    addTask: (data: Omit<import("./types").Task, "id" | "created_at">) => addTask(data) as import("./types").Task,
+    updateTask,
+    deleteTask,
+    importApartments,
+    importPayments,
+    importExpenses,
+  }
+
   return (
     <GuestStoreContext.Provider value={value}>
-      {children}
+      <StoreContext.Provider value={storeValue as any}>
+        {children}
+      </StoreContext.Provider>
     </GuestStoreContext.Provider>
   )
 }
