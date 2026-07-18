@@ -48,6 +48,7 @@ export function Sidebar({ theme, toggleTheme, basePath = "" }: SidebarProps) {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
   const { state } = useStore()
   const { t, lang, setLang } = useI18n()
   const buildingName = state.settings.building_name
@@ -70,7 +71,14 @@ export function Sidebar({ theme, toggleTheme, basePath = "" }: SidebarProps) {
         .eq("id", session.user.id)
         .single()
         .then(({ data }) => {
-          if (data?.is_admin) setIsAdmin(true)
+          if (data?.is_admin) {
+            setIsAdmin(true)
+            supabase!
+              .from("profiles")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "pending_approval")
+              .then(({ count }) => setPendingCount(count ?? 0))
+          }
         })
     })
   }, [])
@@ -139,7 +147,12 @@ export function Sidebar({ theme, toggleTheme, basePath = "" }: SidebarProps) {
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
-                {t(item.label)}
+                <span className="flex-1">{t(item.label)}</span>
+                {item.href === "/admin" && pendingCount > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             )
           })}

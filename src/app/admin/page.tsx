@@ -12,12 +12,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 
-type PendingProfile = {
+type UserProfile = {
   id: string
   email: string | null
   full_name: string | null
   building_name: string | null
+  status: string
+  is_admin: boolean
   created_at: string
 }
 
@@ -29,6 +32,21 @@ function formatDate(dateStr: string): string {
   })
 }
 
+const statusColors: Record<string, string> = {
+  pending_approval: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  approved: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  rejected: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const label = status === "pending_approval" ? "Pending" : status === "approved" ? "Approved" : status.charAt(0).toUpperCase() + status.slice(1)
+  return (
+    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusColors[status] || "bg-muted text-muted-foreground")}>
+      {label}
+    </span>
+  )
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -36,7 +54,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [pendingUsers, setPendingUsers] = useState<PendingProfile[]>([])
+  const [users, setUsers] = useState<UserProfile[]>([])
+  const [tab, setTab] = useState<"pending" | "all">("pending")
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState("")
 
@@ -71,13 +90,12 @@ export default function AdminPage() {
 
       setCurrentUserId(session.user.id)
 
-      const { data: pending } = await supabase
+      const { data: allUsers } = await supabase
         .from("profiles")
-        .select("id, email, full_name, building_name, created_at")
-        .eq("status", "pending_approval")
+        .select("id, email, full_name, building_name, status, is_admin, created_at")
         .order("created_at", { ascending: true })
 
-      setPendingUsers(pending || [])
+      setUsers(allUsers || [])
       setLoading(false)
     }
 
@@ -101,8 +119,10 @@ export default function AdminPage() {
       return
     }
 
-    setPendingUsers((prev) => prev.filter((p) => p.id !== profileId))
-    toast({ title: "User approved", variant: "success" })
+    setUsers((prev) =>
+      prev.map((u) => (u.id === profileId ? { ...u, status: "approved" } : u))
+    )
+    toast({ title: "User approved — they can now sign in" })
   }
 
   async function handleReject(profileId: string) {
@@ -121,10 +141,12 @@ export default function AdminPage() {
       return
     }
 
-    setPendingUsers((prev) => prev.filter((p) => p.id !== profileId))
+    setUsers((prev) =>
+      prev.map((u) => (u.id === profileId ? { ...u, status: "rejected" } : u))
+    )
     setRejectingId(null)
     setRejectReason("")
-    toast({ title: "User rejected", variant: "success" })
+    toast({ title: "User rejected" })
   }
 
   if (loading) {
@@ -143,25 +165,58 @@ export default function AdminPage() {
     )
   }
 
+  const pendingUsers = users.filter((u) => u.status === "pending_approval")
+  const pendingCount = pendingUsers.length
+  const displayUsers = tab === "pending" ? pendingUsers : users
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Admin — Pending Approvals</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Admin Panel</h1>
         <p className="text-sm text-muted-foreground">
-          Review and approve or reject new user registrations.
+          Manage user registrations and access.
         </p>
       </div>
 
-      {pendingUsers.length === 0 ? (
-        <p className="text-muted-foreground">No pending approvals.</p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setTab("pending")}
+          className={cn(
+            "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+            tab === "pending" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          )}
+        >
+          Pending {pendingCount > 0 && `(${pendingCount})`}
+        </button>
+        <button
+          onClick={() => setTab("all")}
+          className={cn(
+            "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+            tab === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          )}
+        >
+          All Users ({users.length})
+        </button>
+      </div>
+
+      {displayUsers.length === 0 ? (
+        <p className="text-muted-foreground">
+          {tab === "pending" ? "No pending approvals." : "No users found."}
+        </p>
       ) : (
         <div className="space-y-4 max-w-3xl">
-          {pendingUsers.map((user) => (
+          {displayUsers.map((user) => (
             <Card key={user.id}>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {user.full_name || "Unknown"}
-                </CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">
+                    {user.full_name || "Unknown"}
+                    {user.is_admin && (
+                      <span className="ml-2 text-xs font-normal text-primary">(Admin)</span>
+                    )}
+                  </CardTitle>
+                  <StatusBadge status={user.status} />
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -169,62 +224,66 @@ export default function AdminPage() {
                   <span>{user.email || "—"}</span>
                   <span className="text-muted-foreground">Building</span>
                   <span>{user.building_name || "—"}</span>
-                  <span className="text-muted-foreground">Applied</span>
+                  <span className="text-muted-foreground">Registered</span>
                   <span>{formatDate(user.created_at)}</span>
                 </div>
 
-                {rejectingId === user.id ? (
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Rejection reason…"
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleReject(user.id)
-                      }}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleReject(user.id)}
-                        disabled={!rejectReason.trim()}
-                      >
-                        Confirm Reject
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRejectingId(null)
-                          setRejectReason("")
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => handleApprove(user.id)}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        setRejectingId(user.id)
-                        setRejectReason("")
-                      }}
-                    >
-                      Reject
-                    </Button>
-                  </div>
+                {user.status === "pending_approval" && (
+                  <>
+                    {rejectingId === user.id ? (
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Rejection reason…"
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleReject(user.id)
+                          }}
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleReject(user.id)}
+                            disabled={!rejectReason.trim()}
+                          >
+                            Confirm Reject
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setRejectingId(null)
+                              setRejectReason("")
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={() => handleApprove(user.id)}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            setRejectingId(user.id)
+                            setRejectReason("")
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
