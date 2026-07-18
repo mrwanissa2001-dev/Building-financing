@@ -190,6 +190,8 @@ export interface Profile {
   created_at: string
   approved_at: string | null
   approved_by: string | null
+  access_until: string | null
+  access_months: number | null
 }
 
 export interface ActiveSession {

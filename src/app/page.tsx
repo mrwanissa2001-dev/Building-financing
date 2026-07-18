@@ -36,6 +36,7 @@ import {
   Area,
 } from "recharts"
 import { useComputed } from "@/hooks/use-computed"
+import { useCurrentProfile } from "@/hooks/use-current-profile"
 import { useStore } from "@/lib/store"
 import { useLayout } from "@/lib/layout"
 import { useI18n } from "@/lib/i18n"
@@ -173,6 +174,7 @@ function DashboardSkeleton() {
 export default function DashboardPage() {
   const { state, addTransfer, updateTransfer, deleteTransfer } = useStore()
   const { toast } = useToast()
+  const { profile } = useCurrentProfile()
   const {
     dashboardStats,
     occupancyBreakdown,
@@ -959,7 +961,9 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{t(greeting())}</p>
+          <p className="text-sm font-medium text-muted-foreground">
+            {t(greeting())}{profile?.full_name ? `, ${profile.full_name}` : ""}
+          </p>
           <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{state.settings.building_name || t("Building")} {t("overview")}</h1>
         </div>
         <div className="flex items-center gap-2">

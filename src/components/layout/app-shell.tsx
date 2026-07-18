@@ -49,13 +49,26 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       // Check profile approval status
       const { data: profile } = await supabase!
         .from("profiles")
-        .select("status")
+        .select("status, is_admin, access_until")
         .eq("id", session.user.id)
         .single()
 
       if (profile && profile.status !== "approved") {
         await supabase!.auth.signOut()
         router.replace("/auth/pending")
+        return
+      }
+
+      // Enforce the access period (admin/unlimited never expires)
+      if (
+        profile &&
+        !profile.is_admin &&
+        profile.access_until &&
+        new Date(profile.access_until).getTime() < Date.now()
+      ) {
+        await supabase!.auth.signOut()
+        sessionStorage.removeItem("buildfin.session")
+        router.replace("/auth/login?reason=expired")
         return
       }
 
