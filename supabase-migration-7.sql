@@ -21,6 +21,16 @@ ALTER TABLE transfers          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE building_settings  ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies: each user sees only their own rows
+-- (DROP IF EXISTS makes this safe to re-run)
+DROP POLICY IF EXISTS "owner_apartments"  ON apartments;
+DROP POLICY IF EXISTS "owner_payments"    ON payments;
+DROP POLICY IF EXISTS "owner_expenses"    ON expenses;
+DROP POLICY IF EXISTS "owner_categories"  ON expense_categories;
+DROP POLICY IF EXISTS "owner_people"      ON category_people;
+DROP POLICY IF EXISTS "owner_history"     ON yearly_history;
+DROP POLICY IF EXISTS "owner_transfers"   ON transfers;
+DROP POLICY IF EXISTS "owner_settings"    ON building_settings;
+
 CREATE POLICY "owner_apartments"   ON apartments         USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "owner_payments"     ON payments           USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "owner_expenses"     ON expenses           USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -30,8 +40,12 @@ CREATE POLICY "owner_history"      ON yearly_history     USING (auth.uid() = use
 CREATE POLICY "owner_transfers"    ON transfers          USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "owner_settings"     ON building_settings  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
--- Existing rows: assign to the first admin user
--- (Run this manually after setting up the admin account:)
--- UPDATE apartments         SET user_id = '<admin-uuid>' WHERE user_id IS NULL;
--- UPDATE payments           SET user_id = '<admin-uuid>' WHERE user_id IS NULL;
--- (etc for all tables)
+-- After running this, assign existing rows to your admin account:
+-- UPDATE apartments         SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE payments           SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE expenses           SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE expense_categories SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE category_people    SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE yearly_history     SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE transfers          SET user_id = auth.uid() WHERE user_id IS NULL;
+-- UPDATE building_settings  SET user_id = auth.uid() WHERE user_id IS NULL;
