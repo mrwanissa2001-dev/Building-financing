@@ -33,7 +33,7 @@ function LoginForm() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("status, is_admin")
+        .select("status, is_admin, access_until")
         .eq("id", data.user.id)
         .single()
 
@@ -75,6 +75,16 @@ function LoginForm() {
             return
           }
         }
+        // Enforce the access period (admin/unlimited never expires)
+        if (!profile.is_admin && profile.access_until && new Date(profile.access_until).getTime() < Date.now()) {
+          toast({
+            title: "Access period ended",
+            description: "Your access has expired. Contact the admin to renew your access.",
+            variant: "destructive",
+          })
+          await supabase.auth.signOut()
+          return
+        }
       }
 
       const sessionToken = crypto.randomUUID()
@@ -109,6 +119,11 @@ function LoginForm() {
       {reason === "revoked" && (
         <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
           You were signed in on another device. You have been signed out here.
+        </div>
+      )}
+      {reason === "expired" && (
+        <div className="mb-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-200">
+          Your access period has ended. Contact the admin to renew your access.
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
