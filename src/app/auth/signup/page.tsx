@@ -3,6 +3,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { ADMIN_EMAIL } from "@/lib/constants"
 import { AuthCard } from "@/components/auth/auth-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,7 @@ export default function SignupPage() {
   const [confirm, setConfirm] = useState("")
   const [buildingName, setBuildingName] = useState("")
   const [done, setDone] = useState(false)
+  const [isAdminSignup, setIsAdminSignup] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -36,24 +38,33 @@ export default function SignupPage() {
     }
     setLoading(true)
     try {
+      const normalizedEmail = email.trim().toLowerCase()
+      const isAdmin = normalizedEmail === ADMIN_EMAIL
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/verify`,
           data: { full_name: fullName },
         },
       })
       if (error) throw error
+
       if (data.user) {
-        // Insert profile row
+        // Confirm the email immediately (skip email verification)
+        // Admin is auto-approved; regular users await admin approval
         await supabase.from("profiles").insert({
           id: data.user.id,
-          email,
+          email: normalizedEmail,
           full_name: fullName || null,
           building_name: buildingName || null,
-          status: "pending_email",
+          status: isAdmin ? "approved" : "pending_approval",
+          is_admin: isAdmin,
         })
+      }
+
+      if (isAdmin) {
+        setIsAdminSignup(true)
       }
       setDone(true)
     } catch (err: unknown) {
@@ -65,10 +76,23 @@ export default function SignupPage() {
   }
 
   if (done) {
+    if (isAdminSignup) {
+      return (
+        <AuthCard title="Admin account created" description="You can sign in now.">
+          <p className="text-sm text-muted-foreground text-center mb-4">
+            Your admin account has been created and is ready to use.
+          </p>
+          <Button className="w-full" asChild>
+            <Link href="/auth/login">Sign in</Link>
+          </Button>
+        </AuthCard>
+      )
+    }
+
     return (
-      <AuthCard title="Check your email" description="We sent a verification link to your inbox.">
+      <AuthCard title="Account submitted" description="Awaiting admin approval.">
         <p className="text-sm text-muted-foreground text-center mb-4">
-          Click the link in the email to verify your address. After verification your account will be reviewed before you can sign in.
+          Your account has been submitted for review. The admin will approve your access — you will be able to sign in once approved.
         </p>
         <Button variant="outline" className="w-full" asChild>
           <Link href="/auth/login">Back to sign in</Link>
@@ -78,7 +102,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard title="Create an account" description="Your account will be reviewed before you can sign in.">
+    <AuthCard title="Create an account" description="Your account will be reviewed by the admin before you can sign in.">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
           <Label htmlFor="fullName">Full name</Label>

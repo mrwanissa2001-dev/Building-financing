@@ -7,28 +7,19 @@ export default function PendingPage() {
   return (
     <AuthCard
       title="Awaiting approval"
-      description="Your account has been submitted and is under review."
+      description="Your account is pending admin review."
     >
       <div className="space-y-4 text-center">
         <div className="rounded-full w-16 h-16 bg-amber-100 dark:bg-amber-950 flex items-center justify-center mx-auto text-3xl">
-          ⏳
+          &#9203;
         </div>
         <p className="text-sm text-muted-foreground">
-          You will receive an email notification once your account is approved.
-          This typically takes less than 24 hours.
+          The admin will review your account and approve your access.
+          Once approved, you can sign in with your email and password.
         </p>
-        <div className="space-y-2">
-          <Button variant="outline" className="w-full" asChild>
-            <Link href="/auth/login">Back to sign in</Link>
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={() => {
-            const a = document.createElement('a')
-            a.href = 'mailto:support@example.com'
-            a.click()
-          }}>
-            Contact support
-          </Button>
-        </div>
+        <Button variant="outline" className="w-full" asChild>
+          <Link href="/auth/login">Back to sign in</Link>
+        </Button>
       </div>
     </AuthCard>
   )

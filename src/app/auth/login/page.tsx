@@ -3,6 +3,7 @@ import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { ADMIN_EMAIL } from "@/lib/constants"
 import { AuthCard } from "@/components/auth/auth-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,28 +33,48 @@ function LoginForm() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("status")
+        .select("status, is_admin")
         .eq("id", data.user.id)
         .single()
 
       if (!profile) {
-        router.push("/auth/pending")
-        return
-      }
-
-      if (profile.status === "pending_email") {
-        toast({ title: "Please verify your email first", description: "Check your inbox for the verification link." })
-        await supabase.auth.signOut()
-        return
-      }
-      if (profile.status === "pending_approval") {
-        router.push("/auth/pending")
-        return
-      }
-      if (profile.status === "rejected") {
-        toast({ title: "Account not approved", description: "Your account application was not approved. Contact support.", variant: "destructive" })
-        await supabase.auth.signOut()
-        return
+        // No profile yet — auto-create for the admin email
+        const isAdmin = data.user.email?.toLowerCase() === ADMIN_EMAIL
+        await supabase.from("profiles").insert({
+          id: data.user.id,
+          email: data.user.email,
+          status: isAdmin ? "approved" : "pending_approval",
+          is_admin: isAdmin,
+        })
+        if (!isAdmin) {
+          await supabase.auth.signOut()
+          router.push("/auth/pending")
+          return
+        }
+      } else {
+        if (profile.status === "pending_approval") {
+          await supabase.auth.signOut()
+          router.push("/auth/pending")
+          return
+        }
+        if (profile.status === "rejected") {
+          toast({ title: "Account not approved", description: "Your account application was not approved. Contact the admin.", variant: "destructive" })
+          await supabase.auth.signOut()
+          return
+        }
+        if (profile.status === "pending_email") {
+          // Legacy status — auto-promote to pending_approval or approved for admin
+          const isAdmin = data.user.email?.toLowerCase() === ADMIN_EMAIL
+          await supabase.from("profiles").update({
+            status: isAdmin ? "approved" : "pending_approval",
+            is_admin: isAdmin || profile.is_admin,
+          }).eq("id", data.user.id)
+          if (!isAdmin) {
+            await supabase.auth.signOut()
+            router.push("/auth/pending")
+            return
+          }
+        }
       }
 
       const sessionToken = crypto.randomUUID()
